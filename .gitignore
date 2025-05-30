@@ -1,4 +1,3 @@
-
 # Environment variables
 .env
 .env.local
@@ -36,3 +35,45 @@ coverage/
 .cache/
 .npm/
 .eslintcache
+
+# Redis database files
+dump.rdb
+*.rdb
+redis.conf
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Temporary folders
+tmp/
+temp/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Next.js cache
+.next/
+
+# Serverless directories
+.serverless/
+
+# FuseBox cache
+.fusebox/
+
+# DynamoDB Local files
+.dynamodb/
+
+# TernJS port file
+.tern-port
+
+# Package lock files (if using yarn)
+package-lock.json
