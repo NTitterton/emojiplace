@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useEffect, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Pixel } from '../types';
 
 interface CanvasProps {
@@ -29,6 +30,7 @@ export default function Canvas({
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [hoveredPixel, setHoveredPixel] = useState<Pixel | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null);
+  const [mousePosition, setMousePosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const pixelMap = new Map();
   pixels.forEach(pixel => {
@@ -126,6 +128,9 @@ export default function Canvas({
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    // Always track mouse position
+    setMousePosition({ x: e.clientX, y: e.clientY });
+    
     if (isDragging) {
       const deltaX = (dragStart.x - e.clientX) / PIXEL_SIZE;
       const deltaY = (dragStart.y - e.clientY) / PIXEL_SIZE;
@@ -133,6 +138,9 @@ export default function Canvas({
       // Allow smooth sub-pixel movements
       onViewportChange(viewportX + deltaX, viewportY + deltaY);
       setDragStart({ x: e.clientX, y: e.clientY });
+      // Hide tooltip while dragging
+      setTooltipPosition(null);
+      setHoveredPixel(null);
     } else {
       const coords = getPixelCoordinates(e.clientX, e.clientY);
       if (coords) {
@@ -142,17 +150,18 @@ export default function Canvas({
         
         // Set tooltip position if there's a pixel
         if (pixel) {
-          const canvas = canvasRef.current;
-          if (canvas) {
-            const rect = canvas.getBoundingClientRect();
-            setTooltipPosition({
-              x: e.clientX - rect.left,
-              y: e.clientY - rect.top
-            });
-          }
+          console.log('Setting tooltip for pixel:', pixel, 'at position:', e.clientX, e.clientY);
+          setTooltipPosition({
+            x: e.clientX,
+            y: e.clientY
+          });
         } else {
           setTooltipPosition(null);
         }
+      } else {
+        setHoveredPixel(null);
+        setTooltipPosition(null);
+        onPixelHover(null);
       }
     }
   };
@@ -177,35 +186,52 @@ export default function Canvas({
     onPixelHover(null);
   };
 
+  // Tooltip component - simplified
+  const renderTooltip = () => {
+    if (!hoveredPixel || (!tooltipPosition && !mousePosition)) {
+      return null;
+    }
+
+    const x = tooltipPosition?.x || mousePosition.x;
+    const y = tooltipPosition?.y || mousePosition.y;
+
+    console.log('Rendering tooltip at:', x, y, 'for pixel:', hoveredPixel);
+
+    return (
+      <div
+        className="fixed bg-black text-white text-xs rounded px-2 py-1 pointer-events-none shadow-lg whitespace-nowrap"
+        style={{
+          left: x + 15,
+          top: y - 60,
+          zIndex: 99999,
+          position: 'fixed'
+        }}
+      >
+        <div>📍 ({hoveredPixel.x}, {hoveredPixel.y})</div>
+        <div>👤 {hoveredPixel.username || hoveredPixel.placedBy}</div>
+        <div>🕒 {new Date(hoveredPixel.timestamp).toLocaleTimeString()}</div>
+      </div>
+    );
+  };
+
   return (
-    <div className="relative">
-      <canvas
-        ref={canvasRef}
-        width={VIEWPORT_WIDTH * PIXEL_SIZE}
-        height={VIEWPORT_HEIGHT * PIXEL_SIZE}
-        className="border border-gray-300 cursor-pointer select-none"
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseLeave}
-        onClick={handleClick}
-      />
+    <>
+      <div className="relative inline-block">
+        <canvas
+          ref={canvasRef}
+          width={VIEWPORT_WIDTH * PIXEL_SIZE}
+          height={VIEWPORT_HEIGHT * PIXEL_SIZE}
+          className="border border-gray-300 cursor-pointer select-none"
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseLeave}
+          onClick={handleClick}
+        />
+      </div>
       
-      {/* Tooltip */}
-      {hoveredPixel && tooltipPosition && (
-        <div
-          className="absolute bg-black text-white text-xs rounded px-2 py-1 pointer-events-none z-10 whitespace-nowrap"
-          style={{
-            left: tooltipPosition.x + 10,
-            top: tooltipPosition.y - 10,
-            transform: 'translateY(-100%)',
-          }}
-        >
-          <div>📍 ({hoveredPixel.x}, {hoveredPixel.y})</div>
-          <div>👤 {hoveredPixel.username || hoveredPixel.placedBy}</div>
-          <div>🕒 {new Date(hoveredPixel.timestamp).toLocaleTimeString()}</div>
-        </div>
-      )}
-    </div>
+      {/* Render tooltip via portal */}
+      {typeof window !== 'undefined' && createPortal(renderTooltip(), document.body)}
+    </>
   );
 } 
