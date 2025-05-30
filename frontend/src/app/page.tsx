@@ -77,6 +77,8 @@ export default function Home() {
         setCooldownTime(null);
         fetchUserState();
       }
+      // Force re-render to update display every second
+      setUserState(prev => prev ? { ...prev } : null);
     }, 1000);
     
     return () => clearInterval(timer);
@@ -98,8 +100,14 @@ export default function Home() {
 
   const fetchPixels = async () => {
     try {
+      // Fetch a larger region to handle fractional viewports and ensure we get all pixels
+      const startX = Math.floor(viewportX) - 5;
+      const startY = Math.floor(viewportY) - 5;
+      const width = 60; // Increased from 50
+      const height = 40; // Increased from 30
+      
       const response = await fetch(
-        `${API_BASE}/api/pixels/region/${viewportX}/${viewportY}/50/30`
+        `${API_BASE}/api/pixels/region/${startX}/${startY}/${width}/${height}`
       );
       const data = await response.json();
       setPixels(data.pixels || []);
@@ -140,8 +148,16 @@ export default function Home() {
     const y = parseInt(jumpCoords.y);
     
     if (!isNaN(x) && !isNaN(y)) {
-      setViewportX(x - 25); // Center the coordinates
-      setViewportY(y - 15);
+      // Center the coordinates and fetch pixels immediately
+      const newViewportX = x - 25;
+      const newViewportY = y - 15;
+      setViewportX(newViewportX);
+      setViewportY(newViewportY);
+      
+      // Force immediate pixel fetch for the new location
+      setTimeout(() => {
+        fetchPixels();
+      }, 100);
     }
   };
 
@@ -270,19 +286,6 @@ export default function Home() {
                 selectedEmoji={selectedEmoji}
               />
             </div>
-            
-            {/* Hovered Pixel Info */}
-            {hoveredPixel && (
-              <div className="bg-white p-4 rounded-lg shadow-lg">
-                <h3 className="font-semibold mb-2">Pixel Info</h3>
-                <div className="space-y-1 text-sm">
-                  <div>Position: ({hoveredPixel.x}, {hoveredPixel.y})</div>
-                  <div>Emoji: {hoveredPixel.emoji}</div>
-                  <div>Placed by: {hoveredPixel.username || hoveredPixel.placedBy}</div>
-                  <div>Time: {new Date(hoveredPixel.timestamp).toLocaleString()}</div>
-                </div>
-              </div>
-            )}
             
             {/* Connection Status */}
             <div className="bg-white p-4 rounded-lg shadow-lg">

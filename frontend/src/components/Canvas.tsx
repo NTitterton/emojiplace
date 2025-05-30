@@ -28,6 +28,7 @@ export default function Canvas({
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [hoveredPixel, setHoveredPixel] = useState<Pixel | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null);
 
   const pixelMap = new Map();
   pixels.forEach(pixel => {
@@ -67,18 +68,28 @@ export default function Canvas({
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    for (let x = viewportX; x < viewportX + VIEWPORT_WIDTH; x++) {
-      for (let y = viewportY; y < viewportY + VIEWPORT_HEIGHT; y++) {
+    // Draw a larger range to handle fractional viewports
+    const startX = Math.floor(viewportX) - 1;
+    const startY = Math.floor(viewportY) - 1;
+    const endX = Math.ceil(viewportX) + VIEWPORT_WIDTH + 1;
+    const endY = Math.ceil(viewportY) + VIEWPORT_HEIGHT + 1;
+
+    for (let x = startX; x < endX; x++) {
+      for (let y = startY; y < endY; y++) {
         const pixel = pixelMap.get(`${x},${y}`);
         if (pixel) {
           const canvasX = (x - viewportX) * PIXEL_SIZE;
           const canvasY = (y - viewportY) * PIXEL_SIZE;
           
-          ctx.fillText(
-            pixel.emoji,
-            canvasX + PIXEL_SIZE / 2,
-            canvasY + PIXEL_SIZE / 2
-          );
+          // Only draw if visible on canvas
+          if (canvasX > -PIXEL_SIZE && canvasX < canvas.width && 
+              canvasY > -PIXEL_SIZE && canvasY < canvas.height) {
+            ctx.fillText(
+              pixel.emoji,
+              canvasX + PIXEL_SIZE / 2,
+              canvasY + PIXEL_SIZE / 2
+            );
+          }
         }
       }
     }
@@ -103,8 +114,8 @@ export default function Canvas({
     if (!canvas) return null;
 
     const rect = canvas.getBoundingClientRect();
-    const x = Math.floor((clientX - rect.left) / PIXEL_SIZE) + viewportX;
-    const y = Math.floor((clientY - rect.top) / PIXEL_SIZE) + viewportY;
+    const x = Math.floor((clientX - rect.left) / PIXEL_SIZE + viewportX);
+    const y = Math.floor((clientY - rect.top) / PIXEL_SIZE + viewportY);
 
     return { x, y };
   };
@@ -116,19 +127,32 @@ export default function Canvas({
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (isDragging) {
-      const deltaX = Math.floor((dragStart.x - e.clientX) / PIXEL_SIZE);
-      const deltaY = Math.floor((dragStart.y - e.clientY) / PIXEL_SIZE);
+      const deltaX = (dragStart.x - e.clientX) / PIXEL_SIZE;
+      const deltaY = (dragStart.y - e.clientY) / PIXEL_SIZE;
       
-      if (deltaX !== 0 || deltaY !== 0) {
-        onViewportChange(viewportX + deltaX, viewportY + deltaY);
-        setDragStart({ x: e.clientX, y: e.clientY });
-      }
+      // Allow smooth sub-pixel movements
+      onViewportChange(viewportX + deltaX, viewportY + deltaY);
+      setDragStart({ x: e.clientX, y: e.clientY });
     } else {
       const coords = getPixelCoordinates(e.clientX, e.clientY);
       if (coords) {
         const pixel = pixelMap.get(`${coords.x},${coords.y}`);
         setHoveredPixel(pixel || null);
         onPixelHover(pixel || null);
+        
+        // Set tooltip position if there's a pixel
+        if (pixel) {
+          const canvas = canvasRef.current;
+          if (canvas) {
+            const rect = canvas.getBoundingClientRect();
+            setTooltipPosition({
+              x: e.clientX - rect.left,
+              y: e.clientY - rect.top
+            });
+          }
+        } else {
+          setTooltipPosition(null);
+        }
       }
     }
   };
@@ -146,21 +170,42 @@ export default function Canvas({
     }
   };
 
+  const handleMouseLeave = () => {
+    setIsDragging(false);
+    setHoveredPixel(null);
+    setTooltipPosition(null);
+    onPixelHover(null);
+  };
+
   return (
-    <canvas
-      ref={canvasRef}
-      width={VIEWPORT_WIDTH * PIXEL_SIZE}
-      height={VIEWPORT_HEIGHT * PIXEL_SIZE}
-      className="border border-gray-300 cursor-pointer select-none"
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={() => {
-        setIsDragging(false);
-        setHoveredPixel(null);
-        onPixelHover(null);
-      }}
-      onClick={handleClick}
-    />
+    <div className="relative">
+      <canvas
+        ref={canvasRef}
+        width={VIEWPORT_WIDTH * PIXEL_SIZE}
+        height={VIEWPORT_HEIGHT * PIXEL_SIZE}
+        className="border border-gray-300 cursor-pointer select-none"
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
+        onClick={handleClick}
+      />
+      
+      {/* Tooltip */}
+      {hoveredPixel && tooltipPosition && (
+        <div
+          className="absolute bg-black text-white text-xs rounded px-2 py-1 pointer-events-none z-10 whitespace-nowrap"
+          style={{
+            left: tooltipPosition.x + 10,
+            top: tooltipPosition.y - 10,
+            transform: 'translateY(-100%)',
+          }}
+        >
+          <div>📍 ({hoveredPixel.x}, {hoveredPixel.y})</div>
+          <div>👤 {hoveredPixel.username || hoveredPixel.placedBy}</div>
+          <div>🕒 {new Date(hoveredPixel.timestamp).toLocaleTimeString()}</div>
+        </div>
+      )}
+    </div>
   );
 } 

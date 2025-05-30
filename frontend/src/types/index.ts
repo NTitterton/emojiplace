@@ -23,4 +23,5 @@ export interface WebSocketMessage {
   type: string;
   data?: any;
   message?: string;
+  cooldownEnd?: number;
 } 
