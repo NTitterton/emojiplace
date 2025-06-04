@@ -16,6 +16,7 @@ interface CanvasProps {
 const PIXEL_SIZE = 20;
 const VIEWPORT_WIDTH = 50;
 const VIEWPORT_HEIGHT = 30;
+const DRAG_THRESHOLD_PX = 5; // Minimum pixel movement to be considered a drag
 
 export default function Canvas({
   pixels,
@@ -27,7 +28,10 @@ export default function Canvas({
 }: CanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 }); // For calculating drag deltas
+  const mouseDownPositionRef = useRef({ x: 0, y: 0 }); // For detecting click vs drag
+  const hasDraggedRef = useRef(false);
+
   const [hoveredPixel, setHoveredPixel] = useState<Pixel | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null);
   const [mousePosition, setMousePosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -47,63 +51,75 @@ export default function Canvas({
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw grid
-    ctx.strokeStyle = '#ddd';
-    ctx.lineWidth = 1;
-    
-    for (let i = 0; i <= VIEWPORT_WIDTH; i++) {
-      ctx.beginPath();
-      ctx.moveTo(i * PIXEL_SIZE, 0);
-      ctx.lineTo(i * PIXEL_SIZE, canvas.height);
-      ctx.stroke();
-    }
-    
-    for (let i = 0; i <= VIEWPORT_HEIGHT; i++) {
-      ctx.beginPath();
-      ctx.moveTo(0, i * PIXEL_SIZE);
-      ctx.lineTo(canvas.width, i * PIXEL_SIZE);
-      ctx.stroke();
+    // Draw dot grid
+    ctx.fillStyle = '#ddd'; // Color of the dots
+    const dotRadius = 1; // Radius of the dots
+
+    // Iterate through visible grid cells based on viewport
+    // Ensure we cover cells that might be partially visible due to fractional viewportX/Y
+    const startGridX = Math.floor(viewportX);
+    const endGridX = Math.ceil(viewportX + VIEWPORT_WIDTH);
+    const startGridY = Math.floor(viewportY);
+    const endGridY = Math.ceil(viewportY + VIEWPORT_HEIGHT);
+
+    for (let gridX = startGridX; gridX < endGridX; gridX++) {
+      for (let gridY = startGridY; gridY < endGridY; gridY++) {
+        // Calculate the center of the cell on the canvas
+        const canvasX = (gridX - viewportX) * PIXEL_SIZE + PIXEL_SIZE / 2;
+        const canvasY = (gridY - viewportY) * PIXEL_SIZE + PIXEL_SIZE / 2;
+
+        // Draw dot if it's within canvas bounds (optional, but good practice)
+        if (canvasX >= 0 && canvasX <= canvas.width && canvasY >= 0 && canvasY <= canvas.height) {
+          ctx.beginPath();
+          ctx.arc(canvasX, canvasY, dotRadius, 0, 2 * Math.PI);
+          ctx.fill();
+        }
+      }
     }
 
-    // Draw pixels
+    // Draw pixels (emojis)
     ctx.font = `${PIXEL_SIZE - 4}px Arial`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // Draw a larger range to handle fractional viewports
-    const startX = Math.floor(viewportX) - 1;
-    const startY = Math.floor(viewportY) - 1;
-    const endX = Math.ceil(viewportX) + VIEWPORT_WIDTH + 1;
-    const endY = Math.ceil(viewportY) + VIEWPORT_HEIGHT + 1;
+    // Iterate through actual pixel data to draw emojis
+    // The range for drawing emojis should be based on the actual pixel data available
+    // and the current viewport to optimize rendering.
+    pixels.forEach(pixel => {
+      // Check if the pixel is within the current, potentially fractional, viewport
+      if (
+        pixel.x >= Math.floor(viewportX) -1 &&
+        pixel.x < Math.ceil(viewportX) + VIEWPORT_WIDTH +1 &&
+        pixel.y >= Math.floor(viewportY) -1 &&
+        pixel.y < Math.ceil(viewportY) + VIEWPORT_HEIGHT +1
+      ) {
+        const canvasX = (pixel.x - viewportX) * PIXEL_SIZE;
+        const canvasY = (pixel.y - viewportY) * PIXEL_SIZE;
 
-    for (let x = startX; x < endX; x++) {
-      for (let y = startY; y < endY; y++) {
-        const pixel = pixelMap.get(`${x},${y}`);
-        if (pixel) {
-          const canvasX = (x - viewportX) * PIXEL_SIZE;
-          const canvasY = (y - viewportY) * PIXEL_SIZE;
-          
-          // Only draw if visible on canvas
-          if (canvasX > -PIXEL_SIZE && canvasX < canvas.width && 
-              canvasY > -PIXEL_SIZE && canvasY < canvas.height) {
-            ctx.fillText(
-              pixel.emoji,
-              canvasX + PIXEL_SIZE / 2,
-              canvasY + PIXEL_SIZE / 2
-            );
-          }
+        // Only draw if emoji is actually visible on canvas after viewport transformation
+        if (canvasX + PIXEL_SIZE > 0 && canvasX < canvas.width &&
+            canvasY + PIXEL_SIZE > 0 && canvasY < canvas.height) {
+          ctx.fillText(
+            pixel.emoji,
+            canvasX + PIXEL_SIZE / 2,
+            canvasY + PIXEL_SIZE / 2
+          );
         }
       }
-    }
+    });
 
     // Highlight hovered pixel
     if (hoveredPixel) {
       const canvasX = (hoveredPixel.x - viewportX) * PIXEL_SIZE;
       const canvasY = (hoveredPixel.y - viewportY) * PIXEL_SIZE;
       
-      ctx.strokeStyle = '#007bff';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(canvasX, canvasY, PIXEL_SIZE, PIXEL_SIZE);
+      // Check if the highlight is within canvas bounds
+      if (canvasX + PIXEL_SIZE > 0 && canvasX < canvas.width &&
+          canvasY + PIXEL_SIZE > 0 && canvasY < canvas.height) {
+        ctx.strokeStyle = '#007bff';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(canvasX, canvasY, PIXEL_SIZE, PIXEL_SIZE);
+      }
     }
   }, [pixels, viewportX, viewportY, hoveredPixel, pixelMap]);
 
@@ -124,37 +140,48 @@ export default function Canvas({
 
   const handleMouseDown = (e: React.MouseEvent) => {
     setIsDragging(true);
-    setDragStart({ x: e.clientX, y: e.clientY });
+    setDragStart({ x: e.clientX, y: e.clientY }); // For delta calculations
+    mouseDownPositionRef.current = { x: e.clientX, y: e.clientY }; // For click vs drag detection
+    hasDraggedRef.current = false;
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    // Always track mouse position
-    setMousePosition({ x: e.clientX, y: e.clientY });
-    
+    setMousePosition({ x: e.clientX, y: e.clientY }); // For tooltip
+
     if (isDragging) {
-      const deltaX = (dragStart.x - e.clientX) / PIXEL_SIZE;
-      const deltaY = (dragStart.y - e.clientY) / PIXEL_SIZE;
+      const currentX = e.clientX;
+      const currentY = e.clientY;
+
+      // Check for total movement since mousedown to qualify as a drag
+      const totalMovedX = Math.abs(currentX - mouseDownPositionRef.current.x);
+      const totalMovedY = Math.abs(currentY - mouseDownPositionRef.current.y);
+
+      if (totalMovedX > DRAG_THRESHOLD_PX || totalMovedY > DRAG_THRESHOLD_PX) {
+        hasDraggedRef.current = true;
+      }
+
+      // Viewport update logic (uses dragStart state for incremental deltas)
+      const deltaViewportX = (dragStart.x - currentX) / PIXEL_SIZE;
+      const deltaViewportY = (dragStart.y - currentY) / PIXEL_SIZE;
+
+      if (deltaViewportX !== 0 || deltaViewportY !== 0) {
+        onViewportChange(viewportX + deltaViewportX, viewportY + deltaViewportY);
+        setDragStart({ x: currentX, y: currentY }); // Update dragStart for the next segment
+      }
       
-      // Allow smooth sub-pixel movements
-      onViewportChange(viewportX + deltaX, viewportY + deltaY);
-      setDragStart({ x: e.clientX, y: e.clientY });
-      // Hide tooltip while dragging
-      setTooltipPosition(null);
+      setTooltipPosition(null); // Hide tooltip while dragging
       setHoveredPixel(null);
     } else {
+      // Hover logic (existing)
       const coords = getPixelCoordinates(e.clientX, e.clientY);
       if (coords) {
         const pixel = pixelMap.get(`${coords.x},${coords.y}`);
         setHoveredPixel(pixel || null);
         onPixelHover(pixel || null);
         
-        // Set tooltip position if there's a pixel
         if (pixel) {
           console.log('Setting tooltip for pixel:', pixel, 'at position:', e.clientX, e.clientY);
-          setTooltipPosition({
-            x: e.clientX,
-            y: e.clientY
-          });
+          setTooltipPosition({ x: e.clientX, y: e.clientY });
         } else {
           setTooltipPosition(null);
         }
@@ -166,17 +193,16 @@ export default function Canvas({
     }
   };
 
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
-  const handleClick = (e: React.MouseEvent) => {
-    if (!isDragging) {
+  const handleMouseUp = (e: React.MouseEvent) => {
+    if (isDragging && !hasDraggedRef.current) {
+      // This was a click, not a drag
       const coords = getPixelCoordinates(e.clientX, e.clientY);
       if (coords) {
         onPixelClick(coords.x, coords.y);
       }
     }
+    setIsDragging(false);
+    // hasDraggedRef is reset on next mousedown
   };
 
   const handleMouseLeave = () => {
@@ -186,7 +212,6 @@ export default function Canvas({
     onPixelHover(null);
   };
 
-  // Tooltip component - simplified
   const renderTooltip = () => {
     if (!hoveredPixel || (!tooltipPosition && !mousePosition)) {
       return null;
@@ -226,11 +251,9 @@ export default function Canvas({
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseLeave}
-          onClick={handleClick}
         />
       </div>
       
-      {/* Render tooltip via portal */}
       {typeof window !== 'undefined' && createPortal(renderTooltip(), document.body)}
     </>
   );
