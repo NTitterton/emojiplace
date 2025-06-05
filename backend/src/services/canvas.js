@@ -9,10 +9,6 @@ class CanvasService {
     return `pixel:${x}:${y}`;
   }
 
-  getRegionKey(regionX, regionY) {
-    return `region:${regionX}:${regionY}`;
-  }
-
   async placePixel(x, y, emoji, placedBy, username = null) {
     const pixelKey = this.getPixelKey(x, y);
     const timestamp = Date.now();
@@ -23,15 +19,9 @@ class CanvasService {
       username: username || null,
       timestamp
     };
-
+    
+    // Using a simple JSON string to store complex data in a hash field.
     await this.redis.hSet(pixelKey, 'data', JSON.stringify(pixelData));
-
-    // Also store in region for efficient querying
-    const regionX = Math.floor(x / 100);
-    const regionY = Math.floor(y / 100);
-    const regionKey = this.getRegionKey(regionX, regionY);
-
-    await this.redis.hSet(regionKey, `${x},${y}`, JSON.stringify(pixelData));
 
     return pixelData;
   }
@@ -42,12 +32,19 @@ class CanvasService {
 
     if (!data) return null;
 
-    return JSON.parse(data);
+    try {
+      return JSON.parse(data);
+    } catch (e) {
+      console.error('Failed to parse pixel data:', data);
+      return null;
+    }
   }
 
   async getRegion(startX, startY, width, height) {
     const pixels = [];
 
+    // This is not the most efficient way for large regions, but it's simple and reliable.
+    // For a production app, a more optimized approach (like using Lua scripts or different data structures in Redis) would be better.
     for (let x = startX; x < startX + width; x++) {
       for (let y = startY; y < startY + height; y++) {
         const pixel = await this.getPixel(x, y);
@@ -55,20 +52,6 @@ class CanvasService {
           pixels.push({ x, y, ...pixel });
         }
       }
-    }
-
-    return pixels;
-  }
-
-  async getRegionEfficient(regionX, regionY) {
-    const regionKey = this.getRegionKey(regionX, regionY);
-    const regionData = await this.redis.hGetAll(regionKey);
-
-    const pixels = [];
-    for (const [coords, data] of Object.entries(regionData)) {
-      const [x, y] = coords.split(',').map(Number);
-      const pixelData = JSON.parse(data);
-      pixels.push({ x, y, ...pixelData });
     }
 
     return pixels;

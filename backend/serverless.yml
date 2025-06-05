@@ -16,6 +16,7 @@ provider:
   environment:
     REDIS_HOST: 'master.emojiplace-redis-cluster.4aarkn.usw1.cache.amazonaws.com'
     REDIS_PORT: 6379
+    DYNAMODB_PIXEL_TABLE: PixelTable-${self:provider.stage} # Add table name for our functions
     # This will be automatically set by the framework after deployment
     WEBSOCKET_API_ENDPOINT:
       Fn::Join:
@@ -41,7 +42,6 @@ provider:
       # Add more if you used more than two subnets
 
   # IAM permissions for your Lambda functions.
-  # We'll need to add permissions for ElastiCache and API Gateway later.
   iam:
     role:
       statements:
@@ -64,6 +64,15 @@ provider:
             - "ec2:DescribeNetworkInterfaces"
             - "ec2:DeleteNetworkInterface"
           Resource: "*"
+        # Add permissions for Lambda to access the DynamoDB table
+        - Effect: "Allow"
+          Action:
+            - "dynamodb:Query"
+            - "dynamodb:Scan"
+            - "dynamodb:GetItem"
+            - "dynamodb:PutItem"
+          Resource:
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/PixelTable-${self:provider.stage}"
 
 package:
   individually: true
@@ -93,17 +102,17 @@ functions:
 
   getPixelRegion:
     handler: src/handlers.getPixelRegion
-    provisionedConcurrency: 1 # Keep one instance warm to reduce latency
     events:
       - httpApi:
           path: /api/pixels/region/{x}/{y}/{width}/{height}
+          method: get
   
   getUser:
     handler: src/handlers.getUser
-    provisionedConcurrency: 1 # Keep one instance warm to reduce latency
     events:
       - httpApi:
           path: /api/users/me
+          method: get
 
   setUsername:
     handler: src/handlers.setUsername
@@ -127,10 +136,24 @@ functions:
 
   messageHandler:
     handler: src/handlers.handleMessage
-    provisionedConcurrency: 1 # Keep one instance warm to reduce latency
     events:
       - websocket:
           route: $default
+
+# Define our DynamoDB table as a resource for Serverless to manage
+resources:
+  Resources:
+    PixelTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.DYNAMODB_PIXEL_TABLE}
+        AttributeDefinitions:
+          - AttributeName: xy
+            AttributeType: S
+        KeySchema:
+          - AttributeName: xy
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
 
 # We can add custom AWS resources here later, such as VPC and Security Group
 # configurations needed for the ElastiCache instance.

@@ -70,7 +70,7 @@ export default function Canvas({
 
         // Draw dot if it's within canvas bounds (optional, but good practice)
         if (canvasX >= 0 && canvasX <= canvas.width && canvasY >= 0 && canvasY <= canvas.height) {
-          ctx.beginPath();
+      ctx.beginPath();
           ctx.arc(canvasX, canvasY, dotRadius, 0, 2 * Math.PI);
           ctx.fill();
         }
@@ -116,9 +116,9 @@ export default function Canvas({
       // Check if the highlight is within canvas bounds
       if (canvasX + PIXEL_SIZE > 0 && canvasX < canvas.width &&
           canvasY + PIXEL_SIZE > 0 && canvasY < canvas.height) {
-        ctx.strokeStyle = '#007bff';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(canvasX, canvasY, PIXEL_SIZE, PIXEL_SIZE);
+      ctx.strokeStyle = '#007bff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(canvasX, canvasY, PIXEL_SIZE, PIXEL_SIZE);
       }
     }
   }, [pixels, viewportX, viewportY, hoveredPixel, pixelMap]);
@@ -163,7 +163,7 @@ export default function Canvas({
       // Viewport update logic (uses dragStart state for incremental deltas)
       const deltaViewportX = (dragStart.x - currentX) / PIXEL_SIZE;
       const deltaViewportY = (dragStart.y - currentY) / PIXEL_SIZE;
-
+      
       if (deltaViewportX !== 0 || deltaViewportY !== 0) {
         onViewportChange(viewportX + deltaViewportX, viewportY + deltaViewportY);
         setDragStart({ x: currentX, y: currentY }); // Update dragStart for the next segment
@@ -242,14 +242,14 @@ export default function Canvas({
   return (
     <>
       <div className="relative inline-block">
-        <canvas
-          ref={canvasRef}
-          width={VIEWPORT_WIDTH * PIXEL_SIZE}
-          height={VIEWPORT_HEIGHT * PIXEL_SIZE}
-          className="border border-gray-300 cursor-pointer select-none"
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
+    <canvas
+      ref={canvasRef}
+      width={VIEWPORT_WIDTH * PIXEL_SIZE}
+      height={VIEWPORT_HEIGHT * PIXEL_SIZE}
+      className="border border-gray-300 cursor-pointer select-none"
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseLeave}
         />
       </div>
