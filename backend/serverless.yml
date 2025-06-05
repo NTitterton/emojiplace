@@ -1,0 +1,139 @@
+service: emojiplace-backend
+
+provider:
+  name: aws
+  runtime: nodejs18.x # Using a recent, stable Node.js runtime
+  region: us-west-1
+  stage: ${opt:stage, 'dev'}
+  profile: default # Using your 'default' AWS CLI profile
+  timeout: 30 # Increase the timeout to 30 seconds for all functions
+
+  # Provider-level configuration for httpApi to enable CORS for all functions
+  httpApi:
+    cors: true
+
+  # Environment variables that will be available to all your Lambda functions
+  environment:
+    REDIS_HOST: 'master.emojiplace-redis-cluster.4aarkn.usw1.cache.amazonaws.com'
+    REDIS_PORT: 6379
+    # This will be automatically set by the framework after deployment
+    WEBSOCKET_API_ENDPOINT:
+      Fn::Join:
+        - ""
+        - - "https://"
+          - !Ref WebsocketsApi
+          - ".execute-api.us-west-1.amazonaws.com/"
+          - ${self:provider.stage}
+
+  # VPC configuration to allow Lambda to connect to ElastiCache
+  vpc:
+    securityGroupIds:
+      # This needs to be the actual ID of the security group, not the name.
+      # You can find this in the AWS VPC Console under "Security Groups".
+      # It will look like 'sg-0123456789abcdef0'.
+      - 'sg-08fddd39034da546d' 
+    subnetIds:
+      # These need to be the actual IDs of the subnets you chose for your
+      # ElastiCache subnet group. You can find these in the AWS VPC Console
+      # under "Subnets". They will look like 'subnet-0123456789abcdef0'.
+      - 'subnet-8cb874eb'
+      - 'subnet-953b29cd'
+      # Add more if you used more than two subnets
+
+  # IAM permissions for your Lambda functions.
+  # We'll need to add permissions for ElastiCache and API Gateway later.
+  iam:
+    role:
+      statements:
+        - Effect: "Allow"
+          Action:
+            - "logs:CreateLogGroup"
+            - "logs:CreateLogStream"
+            - "logs:PutLogEvents"
+          Resource: "arn:aws:logs:*:*:*"
+        # Add permission for Lambda to manage WebSocket connections
+        - Effect: "Allow"
+          Action:
+            - "execute-api:ManageConnections"
+          Resource:
+            - "arn:aws:execute-api:*:*:**/@connections/*"
+        # Add permissions for Lambda to operate within a VPC
+        - Effect: "Allow"
+          Action:
+            - "ec2:CreateNetworkInterface"
+            - "ec2:DescribeNetworkInterfaces"
+            - "ec2:DeleteNetworkInterface"
+          Resource: "*"
+
+package:
+  individually: true
+  exclude:
+    - .git/**
+    - .vscode/**
+    # The aws-sdk is already available in the Lambda environment, but we're getting import errors.
+    # - node_modules/**/aws-sdk/** 
+
+functions:
+  # We will define our HTTP API and WebSocket functions here.
+  # For example, your GET /api/pixels/:x/:y route would look something like this:
+  #
+  # getPixel:
+  #   handler: src/handlers/http.getPixel # Path: src/handlers/http.js, Function: getPixel
+  #   events:
+  #     - httpApi:
+  #         path: /api/pixels/{x}/{y}
+  #         method: get
+
+  getPixel:
+    handler: src/handlers.getPixel
+    events:
+      - httpApi:
+          path: /api/pixels/{x}/{y}
+          method: get
+
+  getPixelRegion:
+    handler: src/handlers.getPixelRegion
+    provisionedConcurrency: 1 # Keep one instance warm to reduce latency
+    events:
+      - httpApi:
+          path: /api/pixels/region/{x}/{y}/{width}/{height}
+  
+  getUser:
+    handler: src/handlers.getUser
+    provisionedConcurrency: 1 # Keep one instance warm to reduce latency
+    events:
+      - httpApi:
+          path: /api/users/me
+
+  setUsername:
+    handler: src/handlers.setUsername
+    events:
+      - httpApi:
+          path: /api/users/username
+          method: post
+
+  # WebSocket Handlers
+  connectionHandler:
+    handler: src/handlers.handleConnect
+    events:
+      - websocket:
+          route: $connect
+
+  disconnectionHandler:
+    handler: src/handlers.handleDisconnect
+    events:
+      - websocket:
+          route: $disconnect
+
+  messageHandler:
+    handler: src/handlers.handleMessage
+    provisionedConcurrency: 1 # Keep one instance warm to reduce latency
+    events:
+      - websocket:
+          route: $default
+
+# We can add custom AWS resources here later, such as VPC and Security Group
+# configurations needed for the ElastiCache instance.
+# resources:
+#   Resources:
+#     ... 
