@@ -230,7 +230,6 @@ export default function Home() {
               <h3 className="font-semibold mb-2">User Info</h3>
               {userState && (
                 <div className="space-y-2 text-sm">
-                  <div>IP: {userState.user.ip}</div>
                   <div>Username: {userState.user.username || 'Not set'}</div>
                   <div>Can place: {userState.canPlace ? '✅' : '❌'}</div>
                   {cooldownTime && (

@@ -233,7 +233,7 @@ export default function Canvas({
         }}
       >
         <div>📍 ({hoveredPixel.x}, {hoveredPixel.y})</div>
-        <div>👤 {hoveredPixel.username || hoveredPixel.placedBy}</div>
+        <div>👤 {hoveredPixel.username}</div>
         <div>🕒 {new Date(hoveredPixel.timestamp).toLocaleTimeString()}</div>
       </div>
     );
