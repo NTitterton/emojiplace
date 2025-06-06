@@ -5,8 +5,11 @@ import Canvas from '../components/Canvas';
 import EmojiPicker from '../components/EmojiPicker';
 import { Pixel, UserState, WebSocketMessage } from '../types';
 
-const API_BASE = 'https://07xui3v4o7.execute-api.us-west-1.amazonaws.com';
-const WS_URL = 'wss://p2sftgo4vh.execute-api.us-west-1.amazonaws.com/dev';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL;
+
+console.log("API_BASE:", API_BASE);
+console.log("WS_URL:", WS_URL);
 
 export default function Home() {
   const [pixels, setPixels] = useState<Pixel[]>([]);
