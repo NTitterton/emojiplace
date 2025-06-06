@@ -46,10 +46,12 @@ export default function Home() {
           alert(message.message);
           if (message.cooldownEnd) {
             setCooldownTime(message.cooldownEnd);
+            setUserState(prev => prev ? { ...prev, canPlace: false } : null);
           }
           break;
         case 'place_success':
           fetchUserState();
+          setUserState(prev => prev ? { ...prev, canPlace: false } : null);
           break;
       }
     };
