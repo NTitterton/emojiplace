@@ -1,8 +1,13 @@
 const { RedisService } = require('./redis');
 const { DynamoDbService } = require('./dynamo');
 
-// A single key for our cache to store the entire pixel map.
-const PIXEL_CACHE_KEY = 'pixels:all';
+const CHUNK_SIZE = 100; // Each chunk will be 100x100 pixels
+const CANVAS_WIDTH = 1000;
+const CANVAS_HEIGHT = 1000;
+
+function getChunkKey(chunkX, chunkY) {
+  return `pixels:chunk:${chunkX}:${chunkY}`;
+}
 
 class CanvasService {
   constructor() {
@@ -53,30 +58,56 @@ class CanvasService {
     return regionPixels;
   }
 
-  /**
-   * If not cached, it fetches all pixels from DynamoDB, caches them,
-   * and then returns the requested region.
-   * @returns {Promise<Pixel[]>} A promise that resolves to an array of pixels.
-   */
-  static async getPixelRegion(/* x, y, width, height */) {
-    const cachedPixels = await RedisService.get(PIXEL_CACHE_KEY);
+  static async getPixelRegion(x, y, width, height) {
+    const startX = Math.max(0, x);
+    const startY = Math.max(0, y);
+    const endX = Math.min(CANVAS_WIDTH, x + width);
+    const endY = Math.min(CANVAS_HEIGHT, y + height);
 
-    let allPixels;
-    if (cachedPixels) {
-      console.log('Cache hit for pixel data.');
-      allPixels = JSON.parse(cachedPixels);
-    } else {
-      console.log('Cache miss. Returning empty array. The cache warmer should populate the cache soon.');
-      // If the cache is empty, we return an empty array.
-      // The cache warmer is responsible for populating it.
-      // The user might see an empty canvas for a moment, but this avoids timeouts.
-      allPixels = [];
+    const startChunkX = Math.floor(startX / CHUNK_SIZE);
+    const endChunkX = Math.floor((endX - 1) / CHUNK_SIZE);
+    const startChunkY = Math.floor(startY / CHUNK_SIZE);
+    const endChunkY = Math.floor((endY - 1) / CHUNK_SIZE);
+
+    const chunkKeys = [];
+    for (let cx = startChunkX; cx <= endChunkX; cx++) {
+      for (let cy = startChunkY; cy <= endChunkY; cy++) {
+        chunkKeys.push(getChunkKey(cx, cy));
+      }
     }
 
-    // Even if we have all pixels, we could still filter them by the requested region here.
-    // For now, we are returning all pixels to match the previous behavior.
+    if (chunkKeys.length === 0) {
+      return [];
+    }
+    
+    const chunkData = await RedisService.mget(chunkKeys);
+
+    const allPixels = [];
+    chunkData.forEach(chunk => {
+      if (chunk) {
+        allPixels.push(...JSON.parse(chunk));
+      }
+    });
+
     return allPixels;
+  }
+
+  /**
+   * Places a single pixel on the canvas.
+   * This involves writing it to DynamoDB and updating the corresponding Redis cache chunk.
+   * @param {object} pixel - The pixel object to place.
+   * @returns {Promise<void>}
+   */
+  static async placePixel(pixel) {
+    // This function will now be primarily handled by the stream processor.
+    // The main API handler will just write to DynamoDB.
+    // However, we can leave this here for potential future use or direct calls.
+    console.log('Placing pixel:', pixel);
   }
 }
 
-module.exports = { CanvasService: new CanvasService() };
+module.exports = {
+  CanvasService,
+  CHUNK_SIZE,
+  getChunkKey
+};

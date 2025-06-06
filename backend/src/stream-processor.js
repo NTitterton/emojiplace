@@ -1,5 +1,8 @@
 const AWS = require('aws-sdk');
 const { UserService } = require('./services/user');
+const { unmarshall } = require('@aws-sdk/util-dynamodb');
+const { RedisService } = require('./services/redis');
+const { CHUNK_SIZE, getChunkKey } = require('./services/canvas');
 
 // This function should be initialized outside the handler for performance.
 const getApiGatewayManagementApi = () => {
@@ -32,30 +35,53 @@ const broadcastMessage = async (connectionIds, messageData) => {
   await Promise.all(postCalls);
 };
 
-
 exports.handler = async (event) => {
-  console.log('Stream processor invoked with event:', JSON.stringify(event, null, 2));
-  
-  const allConnections = await UserService.getAllConnections();
-  if (allConnections.length === 0) {
-    console.log("No active connections. Skipping broadcast.");
-    return;
-  }
+  console.log('Received event:', JSON.stringify(event, null, 2));
 
   for (const record of event.Records) {
-    // We only care about new pixels being inserted/updated
     if (record.eventName === 'INSERT' || record.eventName === 'MODIFY') {
-      const newPixelImage = record.dynamodb.NewImage;
+      const newImage = record.dynamodb.NewImage;
+      const pixel = unmarshall(newImage);
+
+      const chunkX = Math.floor(pixel.x / CHUNK_SIZE);
+      const chunkY = Math.floor(pixel.y / CHUNK_SIZE);
+      const key = getChunkKey(chunkX, chunkY);
       
-      // The image from the stream is in DynamoDB's format, so we need to unmarshall it.
-      const pixelData = AWS.DynamoDB.Converter.unmarshall(newPixelImage);
+      try {
+        // We need to update the chunk.
+        // For simplicity and safety against race conditions, we'll use a lock.
+        const lockKey = `lock:${key}`;
+        const lockAquired = await RedisService.set(lockKey, '1', { NX: true, EX: 5 }); // 5-second lock
 
-      console.log(`Broadcasting pixel update for (${pixelData.x}, ${pixelData.y}) to ${allConnections.length} clients.`);
+        if (!lockAquired) {
+          console.log(`Could not acquire lock for ${key}. Skipping update, another process is likely handling it.`);
+          continue;
+        }
 
-      await broadcastMessage(allConnections, {
-        type: 'pixel_placed',
-        data: pixelData,
-      });
+        try {
+          const rawChunk = await RedisService.get(key);
+          const chunk = rawChunk ? JSON.parse(rawChunk) : [];
+
+          const pixelIndex = chunk.findIndex(p => p.x === pixel.x && p.y === pixel.y);
+
+          if (pixelIndex !== -1) {
+            // Modify existing pixel
+            chunk[pixelIndex] = pixel;
+          } else {
+            // Insert new pixel
+            chunk.push(pixel);
+          }
+
+          await RedisService.set(key, JSON.stringify(chunk), { EX: 3600 }); // Cache chunk for 1 hour
+          console.log(`Successfully updated cache for chunk ${key}`);
+        } finally {
+          // Release the lock
+          await RedisService.del(lockKey);
+        }
+
+      } catch (error) {
+        console.error(`Error updating cache for chunk ${key}:`, error);
+      }
     }
   }
 }; 

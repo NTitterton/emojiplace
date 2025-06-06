@@ -2,6 +2,9 @@ const AWS = require('aws-sdk');
 const { CanvasService } = require('./services/canvas');
 const { UserService } = require('./services/user');
 const { RedisService } = require('./services/redis');
+const { DynamoDbService } = require('./services/dynamo');
+const { ApiGatewayManagementApi } = require('@aws-sdk/client-apigatewaymanagementapi');
+const { v4: uuidv4 } = require('uuid');
 
 // Initialize services.
 // Note: In a real serverless setup, the RedisService would be initialized
@@ -57,7 +60,7 @@ module.exports.getPixel = async (event) => {
 module.exports.getPixelRegion = async (event) => {
   try {
     const { x, y, width, height } = event.pathParameters;
-    const pixels = await canvasService.getRegion(
+    const pixels = await CanvasService.getPixelRegion(
       parseInt(x, 10),
       parseInt(y, 10),
       parseInt(width, 10),
@@ -79,10 +82,13 @@ module.exports.getPixelRegion = async (event) => {
  */
 module.exports.getUser = async (event) => {
   try {
-    // In a real API Gateway setup, the source IP is available here.
-    const ip = event.requestContext?.identity?.sourceIp || '127.0.0.1';
-    const userState = await userService.getUserState(ip);
-    return createApiResponse(200, userState);
+    const userId = event.queryStringParameters?.userId;
+    if (!userId) {
+      return createApiResponse(400, { message: 'userId query parameter is required.' });
+    }
+    const user = await UserService.getUser(userId);
+    const canPlace = await UserService.canPlacePixel(userId);
+    return createApiResponse(200, { user, canPlace });
   } catch (error) {
     console.error('Error in getUser handler:', error);
     return createApiResponse(500, { message: 'Internal Server Error' });
@@ -95,19 +101,13 @@ module.exports.getUser = async (event) => {
  */
 module.exports.setUsername = async (event) => {
   try {
-    const ip = event.requestContext?.identity?.sourceIp || '127.0.0.1';
-    
-    if (!event.body) {
-        return createApiResponse(400, { message: 'Username is required.' });
+    const { userId, username } = JSON.parse(event.body);
+    if (!userId || !username) {
+      return createApiResponse(400, { message: 'userId and username are required.' });
     }
-    const { username } = JSON.parse(event.body);
-
-    if (!username || typeof username !== 'string' || username.trim().length === 0) {
-      return createApiResponse(400, { message: 'Invalid username.' });
-    }
-
-    await userService.setUsername(ip, username.trim());
-    return createApiResponse(200, { message: 'Username updated successfully.' });
+    await UserService.setUsername(userId, username);
+    const user = await UserService.getUser(userId);
+    return createApiResponse(200, { user });
   } catch (error) {
     console.error('Error in setUsername handler:', error);
     return createApiResponse(500, { message: 'Internal Server Error' });
@@ -121,13 +121,17 @@ module.exports.setUsername = async (event) => {
  */
 module.exports.handleConnect = async (event) => {
   const connectionId = event.requestContext.connectionId;
-  console.log(`Client connected: ${connectionId}`);
-
+  const userId = event.queryStringParameters?.userId;
+  if (!userId) {
+    console.error('Connect handler failed: userId is required.');
+    return { statusCode: 400, body: 'Connection failed: userId query parameter is required.' };
+  }
+  console.log(`Client connected: ${connectionId} with userId: ${userId}`);
   try {
-    await userService.addConnection(connectionId);
+    await UserService.addConnection(userId, connectionId);
     return { statusCode: 200, body: 'Connected.' };
   } catch (error) {
-    console.error('Failed to handle connect event:', error);
+    console.error('Connection handler failed:', error);
     return { statusCode: 500, body: 'Connection failed.' };
   }
 };
@@ -140,12 +144,11 @@ module.exports.handleConnect = async (event) => {
 module.exports.handleDisconnect = async (event) => {
   const connectionId = event.requestContext.connectionId;
   console.log(`Client disconnected: ${connectionId}`);
-
   try {
-    await userService.removeConnection(connectionId);
+    await UserService.removeConnection(connectionId);
     return { statusCode: 200, body: 'Disconnected.' };
   } catch (error) {
-    console.error('Failed to handle disconnect event:', error);
+    console.error('Disconnection handler failed:', error);
     return { statusCode: 500, body: 'Disconnection failed.' };
   }
 };
@@ -163,10 +166,10 @@ const broadcastMessage = async (connectionIds, messageData) => {
     } catch (e) {
       if (e.statusCode === 410) {
         // This connection is stale. Remove it from our store.
-        console.log(`Found stale connection, removing: ${id}`);
+        console.log(`Found stale connection, deleting ${id}`);
         await userService.removeConnection(id);
       } else {
-        console.error(`Failed to post to connection ${id}:`, e);
+        console.error('Failed to post message to connection', id, e);
       }
     }
   });
@@ -181,58 +184,59 @@ const broadcastMessage = async (connectionIds, messageData) => {
  */
 module.exports.handleMessage = async (event) => {
   const connectionId = event.requestContext.connectionId;
-  const ip = event.requestContext?.identity?.sourceIp || '127.0.0.1';
-  const body = JSON.parse(event.body);
-  console.log(`Received message from ${connectionId}:`, body);
+  try {
+    const message = JSON.parse(event.body);
+    const userId = await UserService.getUserIdByConnection(connectionId);
 
-  switch (body.type) {
-    case 'place_pixel':
-      try {
-        const { x, y, emoji, username } = body.payload;
-        const userState = await userService.getUserState(ip);
+    if (!userId) {
+      return { statusCode: 403, body: 'Forbidden. No user associated with this connection.' };
+    }
 
-        if (!userState.canPlace) {
-          const apiGateway = getApiGatewayManagementApi();
-          await apiGateway.postToConnection({
-            ConnectionId: connectionId,
-            Data: JSON.stringify({
-              type: 'place_error',
-              message: 'Cooldown active. Please wait.',
-              cooldownEnd: userState.cooldownEnd,
-            }),
-          }).promise();
-          return { statusCode: 429 }; // Too Many Requests
+    switch (message.type) {
+      case 'place_pixel': {
+        const canPlace = await UserService.canPlacePixel(userId);
+        if (!canPlace) {
+          return { statusCode: 429, body: 'Cooldown not met.' };
         }
-
-        // Place the pixel and set the cooldown
-        await canvasService.placePixel(x, y, emoji, ip, username);
-        await userService.setUserCooldown(ip);
         
-        // Fetch the user's new state, which now includes the cooldown
-        const newUserState = await userService.getUserState(ip);
+        const { x, y, emoji } = message.data;
+        const user = await UserService.getUser(userId);
 
-        // Send a success confirmation with the new user state to the original client.
-        // The broadcast to other clients will be handled by the DynamoDB stream processor.
-        const apiGateway = getApiGatewayManagementApi();
-        await apiGateway.postToConnection({
-            ConnectionId: connectionId,
-            Data: JSON.stringify({ type: 'place_success', data: newUserState }),
-        }).promise();
+        const pixelData = {
+          xy: `${x}:${y}`,
+          x,
+          y,
+          emoji,
+          userId,
+          username: user.username,
+          timestamp: new Date().toISOString(),
+        };
 
-      } catch (error) {
-        console.error('Error processing place_pixel:', error);
-        // Optionally send an error message back to the sender
+        await DynamoDbService.putPixel(pixelData);
+        await UserService.updateUserCooldown(userId);
+
+        console.log(`Pixel placed by ${userId} at (${x}, ${y}). Broadcasting.`);
+        
+        const allConnections = await UserService.getAllConnections();
+        await broadcastMessage(allConnections, {
+          type: 'pixel_placed',
+          data: pixelData,
+        });
+
+        return { statusCode: 200, body: 'Pixel placed.' };
       }
-      break;
 
-    case 'subscribe_region':
-      // Placeholder for region subscription logic
-      console.log('Region subscription not yet implemented.');
-      break;
+      case 'subscribe_region':
+        // Placeholder for region subscription logic
+        console.log('Region subscription not yet implemented.');
+        break;
 
-    default:
-      console.log(`Unknown message type: ${body.type}`);
+      default:
+        console.log(`Unknown message type: ${message.type}`);
+        return { statusCode: 400, body: 'Unknown message type.' };
+    }
+  } catch (error) {
+    console.error('Error processing message:', error);
+    return { statusCode: 500, body: 'Message processing failed.' };
   }
-
-  return { statusCode: 200 };
 }; 

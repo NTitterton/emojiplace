@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import Canvas from '../components/Canvas';
 import EmojiPicker from '../components/EmojiPicker';
 import { Pixel, UserState, WebSocketMessage } from '../types';
@@ -11,6 +12,17 @@ const WS_URL = process.env.NEXT_PUBLIC_WS_URL;
 console.log("API_BASE:", API_BASE);
 console.log("WS_URL:", WS_URL);
 
+// Function to get or create a userId from localStorage
+const getUserId = () => {
+  if (typeof window === 'undefined') return null;
+  let userId = localStorage.getItem('emojiplace_userId');
+  if (!userId) {
+    userId = uuidv4();
+    localStorage.setItem('emojiplace_userId', userId);
+  }
+  return userId;
+};
+
 export default function Home() {
   const [pixels, setPixels] = useState<Pixel[]>([]);
   const [selectedEmoji, setSelectedEmoji] = useState('😀');
@@ -19,87 +31,56 @@ export default function Home() {
   const [viewportX, setViewportX] = useState(0);
   const [viewportY, setViewportY] = useState(0);
   const [jumpCoords, setJumpCoords] = useState({ x: '', y: '' });
-  const [username, setUsername] = useState('');
+  const [usernameInput, setUsernameInput] = useState('');
+  const [userId, setUserId] = useState<string | null>(null);
   const [ws, setWs] = useState<WebSocket | null>(null);
   const [cooldownTime, setCooldownTime] = useState<number | null>(null);
 
+  // Set userId on initial client-side load
+  useEffect(() => {
+    setUserId(getUserId());
+  }, []);
+
   // WebSocket connection
   useEffect(() => {
-    const websocket = new WebSocket(WS_URL);
+    if (!userId || !WS_URL) return;
+
+    const websocket = new WebSocket(`${WS_URL}?userId=${userId}`);
     
-    websocket.onopen = () => {
-      console.log('WebSocket connected');
-      setWs(websocket);
-    };
+    websocket.onopen = () => console.log('WebSocket connected');
     
     websocket.onmessage = (event) => {
       const message: WebSocketMessage = JSON.parse(event.data);
-      
-      switch (message.type) {
-        case 'pixel_placed':
-          setPixels(prev => {
-            const newPixels = prev.filter(p => !(p.x === message.data.x && p.y === message.data.y));
-            return [...newPixels, message.data];
-          });
-          break;
-        case 'place_error':
-          alert(message.message);
-          if (message.cooldownEnd) {
-            setCooldownTime(message.cooldownEnd);
-            setUserState(prev => prev ? { ...prev, canPlace: false } : null);
-          }
-          break;
-        case 'place_success':
-          setUserState(message.data);
-          if (message.data.cooldownEnd) {
-            setCooldownTime(message.data.cooldownEnd);
-          }
-          break;
+      if (message.type === 'pixel_placed') {
+        fetchPixels(); // Refetch all pixels for simplicity
       }
     };
     
-    websocket.onclose = () => {
-      console.log('WebSocket disconnected');
-      setWs(null);
-    };
+    websocket.onclose = () => console.log('WebSocket disconnected');
+    setWs(websocket);
     
-    return () => {
-      websocket.close();
-    };
-  }, []);
+    return () => websocket.close();
+  }, [userId]);
 
-  // Fetch initial data
+  // Fetch initial data & poll for cooldown status
   useEffect(() => {
+    if (!userId) return;
+
     fetchUserState();
     fetchPixels();
-  }, [viewportX, viewportY]);
 
-  // Cooldown timer
-  useEffect(() => {
-    if (!cooldownTime) return;
-    
-    const timer = setInterval(() => {
-      const now = Date.now();
-      if (now >= cooldownTime) {
-        setCooldownTime(null);
-        fetchUserState();
-      }
-      // Force re-render to update display every second
-      setUserState(prev => prev ? { ...prev } : null);
-    }, 1000);
-    
-    return () => clearInterval(timer);
-  }, [cooldownTime]);
+    const interval = setInterval(() => {
+      fetchUserState();
+    }, 5000); // Poll every 5 seconds
+
+    return () => clearInterval(interval);
+  }, [userId]);
 
   const fetchUserState = async () => {
+    if (!userId) return;
     try {
-      const response = await fetch(`${API_BASE}/api/users/me`);
-      const data = await response.json();
-      setUserState(data);
-      
-      if (data.cooldownEnd && data.cooldownEnd > Date.now()) {
-        setCooldownTime(data.cooldownEnd);
-      }
+      const response = await fetch(`${API_BASE}/api/users/me?userId=${userId}`);
+      if (response.ok) setUserState(await response.json());
     } catch (error) {
       console.error('Failed to fetch user state:', error);
     }
@@ -107,43 +88,35 @@ export default function Home() {
 
   const fetchPixels = async () => {
     try {
-      // Fetch a larger region to handle fractional viewports and ensure we get all pixels
-      const startX = Math.floor(viewportX) - 5;
-      const startY = Math.floor(viewportY) - 5;
-      const width = 60; // Increased from 50
-      const height = 40; // Increased from 30
-      
-      const response = await fetch(
-        `${API_BASE}/api/pixels/region/${startX}/${startY}/${width}/${height}`
-      );
-      const data = await response.json();
-      setPixels(data.pixels || []);
+      const response = await fetch(`${API_BASE}/api/pixels/region/0/0/1000/1000`);
+      if (response.ok) setPixels(await response.json());
     } catch (error) {
       console.error('Failed to fetch pixels:', error);
     }
   };
 
   const handlePixelClick = useCallback((x: number, y: number) => {
-    if (!ws || !userState?.canPlace || cooldownTime) {
-      if (cooldownTime) {
-        const remainingSeconds = Math.ceil((cooldownTime - Date.now()) / 1000);
-        alert(`Please wait ${remainingSeconds} seconds before placing another pixel`);
-      } else {
-        alert('Cannot place pixel right now');
-      }
+    if (!ws || !userState?.canPlace) {
+      alert('Cannot place pixel right now. Please wait for the cooldown.');
       return;
     }
 
     ws.send(JSON.stringify({
       type: 'place_pixel',
-      payload: {
-        x,
-        y,
-        emoji: selectedEmoji,
-        username: userState.user.username
-      }
+      data: { x, y, emoji: selectedEmoji }
     }));
-  }, [ws, selectedEmoji, userState, cooldownTime]);
+
+    // Optimistically place pixel and trigger UI cooldown state
+    const optimisticPixel: Pixel = { 
+      x, y, emoji: selectedEmoji, 
+      username: userState.user.username, 
+      userId: userState.user.userId, 
+      timestamp: new Date().toISOString() 
+    };
+    setPixels(prev => [...prev.filter(p => !(p.x === x && p.y === y)), optimisticPixel]);
+    setUserState(prev => prev ? { ...prev, canPlace: false } : null);
+
+  }, [ws, selectedEmoji, userState]);
 
   const handleViewportChange = useCallback((x: number, y: number) => {
     setViewportX(x);
@@ -169,18 +142,19 @@ export default function Home() {
   };
 
   const handleSetUsername = async () => {
-    if (!username.trim()) return;
+    if (!userId || !usernameInput.trim()) return;
     
     try {
       const response = await fetch(`${API_BASE}/api/users/username`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username.trim() })
+        body: JSON.stringify({ userId, username: usernameInput.trim() })
       });
       
       if (response.ok) {
-        fetchUserState();
-        setUsername('');
+        const { user } = await response.json();
+        setUserState(prev => prev ? { ...prev, user } : null);
+        setUsernameInput(''); // Clear input on success
       }
     } catch (error) {
       console.error('Failed to set username:', error);
@@ -271,8 +245,8 @@ export default function Home() {
                 <input
                   type="text"
                   placeholder="Set username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  value={usernameInput}
+                  onChange={(e) => setUsernameInput(e.target.value)}
                   className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
                   maxLength={20}
                 />

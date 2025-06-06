@@ -1,5 +1,9 @@
 service: emojiplace-backend
 
+package:
+  individually: true
+  excludeDevDependencies: true
+
 provider:
   name: aws
   runtime: nodejs18.x # Using a recent, stable Node.js runtime
@@ -79,13 +83,6 @@ provider:
             - "arn:aws:dynamodb:${self:provider.region}:*:table/PixelTable-${self:provider.stage}"
             - "arn:aws:dynamodb:${self:provider.region}:*:table/PixelTable-${self:provider.stage}/stream/*"
 
-package:
-  individually: true
-  exclude:
-    - .git/**
-    - .vscode/**
-    # - node_modules/**/aws-sdk/** # Temporarily disabled due to import errors
-
 functions:
   # We will define our HTTP API and WebSocket functions here.
   # For example, your GET /api/pixels/:x/:y route would look something like this:
@@ -157,13 +154,6 @@ functions:
               - StreamArn
           batchSize: 100
           startingPosition: LATEST
-
-  # New scheduled function to keep the Redis cache warm
-  cacheWarmer:
-    handler: src/cache-warmer.handler
-    vpc: ${self:provider.vpc} # Needs VPC access to talk to Redis
-    events:
-      - schedule: rate(15 minutes)
 
 # Define our DynamoDB table with its stream enabled
 resources:

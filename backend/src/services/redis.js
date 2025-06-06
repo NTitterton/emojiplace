@@ -1,92 +1,98 @@
-const redis = require('redis');
+const Redis = require('ioredis');
+
+let client;
+let instance;
 
 class RedisService {
   constructor() {
-    if (!RedisService.instance) {
-      this.client = redis.createClient({
-        // The url property combines host and port.
-        // It will use the environment variables we set in serverless.yml
-        url: `rediss://${process.env.REDIS_HOST}:${process.env.REDIS_PORT}`,
-        socket: {
-          // Add connection timeout for the Lambda environment
-          // Increased to 15s to account for VPC cold start + TLS handshake.
-          connectTimeout: 15000, 
-        }
-      });
+    if (instance) {
+      return instance;
+    }
 
-      this.client.on('error', (err) => {
-        console.error('Redis Client Error', err);
+    // In a serverless environment, connection management is tricky.
+    // We want to reuse the connection across function invocations if possible.
+    if (!client) {
+      console.log('Creating new Redis client...');
+      client = new Redis({
+        host: process.env.REDIS_HOST,
+        port: process.env.REDIS_PORT,
+        // These options are important for serverless environments
+        // to prevent hanging connections.
+        lazyConnect: true,
+        showFriendlyErrorStack: true,
+        enableAutoPipelining: true,
+        maxRetriesPerRequest: 0,
+        retryStrategy: (times) => {
+          if (times > 3) {
+            return null; // Stop retrying after 3 attempts
+          }
+          return Math.min(times * 200, 1000);
+        },
       });
-      
-      // Don't connect in the constructor. Connect on demand.
-      // this.client.connect().catch(console.error);
-      RedisService.instance = this;
     }
-    return RedisService.instance;
-  }
-  
-  // This is a more robust connection handler for serverless environments.
-  // It checks if the client is ready and connects if it's not.
-  async ensureConnected() {
-    if (!this.client.isReady) {
-      console.log('Redis client is not ready, attempting to connect...');
-      try {
-        await this.client.connect();
-        console.log('Redis client connected successfully.');
-      } catch (err) {
-        console.error('Failed to connect to Redis:', err);
-        // Re-throw the error to be caught by the calling function
-        throw new Error('Could not connect to Redis.');
-      }
-    }
-    return this.client;
+    
+    this.client = client;
+    instance = this;
   }
 
+  static getInstance() {
+    if (!instance) {
+      instance = new RedisService();
+    }
+    return instance;
+  }
+
+  // Make methods on the instance, not static
   async get(key) {
-    const client = await this.ensureConnected();
-    return client.get(key);
+    return this.client.get(key);
+  }
+
+  async mget(keys) {
+    return this.client.mget(keys);
   }
 
   async set(key, value, options) {
-    const client = await this.ensureConnected();
-    return client.set(key, value, options);
+    if (options && options.EX) {
+      return this.client.set(key, value, 'EX', options.EX);
+    }
+    if (options && options.NX) {
+        return this.client.set(key, value, 'NX');
+    }
+    return this.client.set(key, value);
+  }
+
+  async del(key) {
+    return this.client.del(key);
+  }
+
+  async sadd(key, value) {
+    return this.client.sadd(key, value);
+  }
+  
+  async srem(key, value) {
+    return this.client.srem(key, value);
+  }
+
+  async smembers(key) {
+    return this.client.smembers(key);
   }
 
   async hGet(key, field) {
-    const client = await this.ensureConnected();
-    return client.hGet(key, field);
+    return this.client.hget(key, field);
   }
   
   async hSet(key, field, value) {
-    const client = await this.ensureConnected();
-    return client.hSet(key, field, value);
+    return this.client.hset(key, field, value);
   }
 
   async hGetAll(key) {
-    const client = await this.ensureConnected();
-    return client.hGetAll(key);
+    return this.client.hgetall(key);
   }
 
   async expire(key, seconds) {
-    const client = await this.ensureConnected();
-    return client.expire(key, seconds);
-  }
-
-  async sAdd(key, value) {
-    const client = await this.ensureConnected();
-    return client.sAdd(key, value);
-  }
-
-  async sRem(key, value) {
-    const client = await this.ensureConnected();
-    return client.sRem(key, value);
-  }
-
-  async sMembers(key) {
-    const client = await this.ensureConnected();
-    return client.sMembers(key);
+    return this.client.expire(key, seconds);
   }
 }
 
-// Export a single instance to be used across the application
-module.exports = { RedisService: new RedisService() }; 
+// Export a single instance (singleton)
+module.exports = { RedisService: RedisService.getInstance() }; 
