@@ -6,7 +6,7 @@ provider:
   region: us-west-1
   stage: ${opt:stage, 'dev'}
   profile: default # Using your 'default' AWS CLI profile
-  timeout: 30 # Increase the timeout to 30 seconds for all functions
+  timeout: 30 # Revert to a standard 30s timeout
 
   # Provider-level configuration for httpApi to enable CORS for all functions
   httpApi:
@@ -64,23 +64,27 @@ provider:
             - "ec2:DescribeNetworkInterfaces"
             - "ec2:DeleteNetworkInterface"
           Resource: "*"
-        # Add permissions for Lambda to access the DynamoDB table
+        # Add permissions for Lambda to access the DynamoDB table and its stream
         - Effect: "Allow"
           Action:
             - "dynamodb:Query"
             - "dynamodb:Scan"
             - "dynamodb:GetItem"
             - "dynamodb:PutItem"
+            - "dynamodb:GetRecords"
+            - "dynamodb:GetShardIterator"
+            - "dynamodb:DescribeStream"
+            - "dynamodb:ListStreams"
           Resource:
             - "arn:aws:dynamodb:${self:provider.region}:*:table/PixelTable-${self:provider.stage}"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/PixelTable-${self:provider.stage}/stream/*"
 
 package:
   individually: true
   exclude:
     - .git/**
     - .vscode/**
-    # The aws-sdk is already available in the Lambda environment, but we're getting import errors.
-    # - node_modules/**/aws-sdk/** 
+    # - node_modules/**/aws-sdk/** # Temporarily disabled due to import errors
 
 functions:
   # We will define our HTTP API and WebSocket functions here.
@@ -140,7 +144,28 @@ functions:
       - websocket:
           route: $default
 
-# Define our DynamoDB table as a resource for Serverless to manage
+  # The new Processor Lambda that will be triggered by the DynamoDB stream
+  pixelStreamProcessor:
+    handler: src/stream-processor.handler
+    vpc: ${self:provider.vpc}
+    events:
+      - stream:
+          type: dynamodb
+          arn:
+            Fn::GetAtt:
+              - PixelTable
+              - StreamArn
+          batchSize: 100
+          startingPosition: LATEST
+
+  # New scheduled function to keep the Redis cache warm
+  cacheWarmer:
+    handler: src/cache-warmer.handler
+    vpc: ${self:provider.vpc} # Needs VPC access to talk to Redis
+    events:
+      - schedule: rate(15 minutes)
+
+# Define our DynamoDB table with its stream enabled
 resources:
   Resources:
     PixelTable:
@@ -154,6 +179,8 @@ resources:
           - AttributeName: xy
             KeyType: HASH
         BillingMode: PAY_PER_REQUEST
+        StreamSpecification:
+          StreamViewType: NEW_IMAGE # The event will contain the full item after it was modified
 
 # We can add custom AWS resources here later, such as VPC and Security Group
 # configurations needed for the ElastiCache instance.

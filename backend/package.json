@@ -10,6 +10,8 @@
     "lambda": "node src/lambda.js"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.825.0",
+    "@aws-sdk/lib-dynamodb": "^3.825.0",
     "aws-sdk": "^2.1692.0",
     "cors": "^2.8.5",
     "express": "^4.18.2",

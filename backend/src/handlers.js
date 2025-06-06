@@ -205,21 +205,14 @@ module.exports.handleMessage = async (event) => {
         }
 
         // Place the pixel and set the cooldown
-        const pixelData = await canvasService.placePixel(x, y, emoji, ip, username);
+        await canvasService.placePixel(x, y, emoji, ip, username);
         await userService.setUserCooldown(ip);
         
         // Fetch the user's new state, which now includes the cooldown
         const newUserState = await userService.getUserState(ip);
 
-        // Broadcast the new pixel to all connected clients
-        const allConnections = await userService.getAllConnections();
-        console.log(`Broadcasting new pixel to ${allConnections.length} clients.`);
-        await broadcastMessage(allConnections, {
-          type: 'pixel_placed',
-          data: { x, y, ...pixelData },
-        });
-
-        // Send a success confirmation with the new user state to the original client
+        // Send a success confirmation with the new user state to the original client.
+        // The broadcast to other clients will be handled by the DynamoDB stream processor.
         const apiGateway = getApiGatewayManagementApi();
         await apiGateway.postToConnection({
             ConnectionId: connectionId,
