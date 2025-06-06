@@ -50,8 +50,10 @@ export default function Home() {
           }
           break;
         case 'place_success':
-          fetchUserState();
-          setUserState(prev => prev ? { ...prev, canPlace: false } : null);
+          setUserState(message.data);
+          if (message.data.cooldownEnd) {
+            setCooldownTime(message.data.cooldownEnd);
+          }
           break;
       }
     };

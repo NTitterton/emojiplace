@@ -23,7 +23,7 @@ class CanvasService {
     // Using a simple JSON string to store complex data in a hash field.
     await this.redis.hSet(pixelKey, 'data', JSON.stringify(pixelData));
 
-    return pixelData;
+    return { x, y, ...pixelData };
   }
 
   async getPixel(x, y) {
