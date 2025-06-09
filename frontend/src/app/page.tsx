@@ -23,6 +23,33 @@ const getUserId = () => {
   return userId;
 };
 
+const fetchWithRetry = async (url: string, retries = 4, delay = 2500, timeout = 20000) => {
+  for (let i = 0; i < retries; i++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (response.ok) {
+        return response.json();
+      }
+      // If the response is not OK, throw an error to trigger the retry.
+      throw new Error(`Request failed with status ${response.status}`);
+    } catch (error) {
+      clearTimeout(timeoutId);
+      console.warn(`Attempt ${i + 1} failed for ${url}. Retrying in ${delay / 1000}s...`, error);
+      if (i < retries - 1) {
+        await new Promise(res => setTimeout(res, delay));
+      } else {
+        console.error(`All retry attempts failed for ${url}.`);
+        throw new Error('All retry attempts failed.');
+      }
+    }
+  }
+  throw new Error('fetchWithRetry finished without returning a value.');
+};
+
 export default function Home() {
   const [pixels, setPixels] = useState<Pixel[]>([]);
   const [selectedEmoji, setSelectedEmoji] = useState('😀');
@@ -35,6 +62,7 @@ export default function Home() {
   const [userId, setUserId] = useState<string | null>(null);
   const [ws, setWs] = useState<WebSocket | null>(null);
   const [cooldownTime, setCooldownTime] = useState<number | null>(null);
+  const [statusMessage, setStatusMessage] = useState('Initializing...');
 
   // Set userId on initial client-side load
   useEffect(() => {
@@ -52,7 +80,7 @@ export default function Home() {
     websocket.onmessage = (event) => {
       const message: WebSocketMessage = JSON.parse(event.data);
       if (message.type === 'pixel_placed') {
-        fetchPixels(); // Refetch all pixels for simplicity
+        setPixels(prev => [...prev.filter(p => !(p.x === message.data.x && p.y === message.data.y)), message.data]);
       }
     };
     
@@ -66,33 +94,29 @@ export default function Home() {
   useEffect(() => {
     if (!userId) return;
 
-    fetchUserState();
-    fetchPixels();
-
-    const interval = setInterval(() => {
-      fetchUserState();
-    }, 5000); // Poll every 5 seconds
-
-    return () => clearInterval(interval);
+    const initialize = async () => {
+      try {
+        setStatusMessage('Waking up the canvas...');
+        await Promise.all([fetchUserState(), fetchPixels()]);
+        setStatusMessage('');
+      } catch (error) {
+        setStatusMessage('Could not connect to the canvas. Please try refreshing.');
+        console.error('Initialization failed:', error);
+      }
+    };
+    
+    initialize();
   }, [userId]);
 
   const fetchUserState = async () => {
     if (!userId) return;
-    try {
-      const response = await fetch(`${API_BASE}/api/users/me?userId=${userId}`);
-      if (response.ok) setUserState(await response.json());
-    } catch (error) {
-      console.error('Failed to fetch user state:', error);
-    }
+    const data = await fetchWithRetry(`${API_BASE}/api/users/me?userId=${userId}`);
+    setUserState(data);
   };
 
   const fetchPixels = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/api/pixels/region/0/0/1000/1000`);
-      if (response.ok) setPixels(await response.json());
-    } catch (error) {
-      console.error('Failed to fetch pixels:', error);
-    }
+    const data = await fetchWithRetry(`${API_BASE}/api/pixels/region/0/0/1000/1000`);
+    setPixels(data || []);
   };
 
   const handlePixelClick = useCallback((x: number, y: number) => {
@@ -172,6 +196,14 @@ export default function Home() {
     
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
+
+  if (statusMessage) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <h1 className="text-2xl font-bold">{statusMessage}</h1>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
