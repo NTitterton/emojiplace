@@ -99,10 +99,25 @@ class CanvasService {
    * @returns {Promise<void>}
    */
   static async placePixel(pixel) {
-    // This function will now be primarily handled by the stream processor.
-    // The main API handler will just write to DynamoDB.
-    // However, we can leave this here for potential future use or direct calls.
-    console.log('Placing pixel:', pixel);
+    const chunkX = Math.floor(pixel.x / CHUNK_SIZE);
+    const chunkY = Math.floor(pixel.y / CHUNK_SIZE);
+    const key = getChunkKey(chunkX, chunkY);
+
+    // This is a "read-then-write" operation. For this app, we're accepting the
+    // small risk of a race condition for the sake of simplicity.
+    // A locking mechanism could be added here for more critical applications.
+    const rawChunk = await RedisService.get(key);
+    const chunk = rawChunk ? JSON.parse(rawChunk) : [];
+
+    const pixelIndex = chunk.findIndex(p => p.x === pixel.x && p.y === pixel.y);
+
+    if (pixelIndex !== -1) {
+      chunk[pixelIndex] = pixel; // Replace existing pixel
+    } else {
+      chunk.push(pixel); // Add new pixel
+    }
+
+    await RedisService.set(key, JSON.stringify(chunk), { EX: 60 * 60 * 25 }); // Cache for ~1 day
   }
 }
 

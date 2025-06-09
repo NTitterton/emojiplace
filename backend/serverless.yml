@@ -141,21 +141,13 @@ functions:
       - websocket:
           route: $default
 
-  # The new Processor Lambda that will be triggered by the DynamoDB stream
-  pixelStreamProcessor:
-    handler: src/stream-processor.handler
-    vpc: ${self:provider.vpc}
+  snapshot:
+    handler: src/snapshot.handler
+    vpc: ${self:provider.vpc} # Needs VPC access to talk to Redis
     events:
-      - stream:
-          type: dynamodb
-          arn:
-            Fn::GetAtt:
-              - PixelTable
-              - StreamArn
-          batchSize: 100
-          startingPosition: LATEST
+      - schedule: rate(1 day)
 
-# Define our DynamoDB table with its stream enabled
+# Define our DynamoDB table without the stream
 resources:
   Resources:
     PixelTable:
@@ -169,8 +161,6 @@ resources:
           - AttributeName: xy
             KeyType: HASH
         BillingMode: PAY_PER_REQUEST
-        StreamSpecification:
-          StreamViewType: NEW_IMAGE # The event will contain the full item after it was modified
 
 # We can add custom AWS resources here later, such as VPC and Security Group
 # configurations needed for the ElastiCache instance.

@@ -6,11 +6,11 @@
   "dependencies": {
     "@aws-sdk/client-apigatewaymanagementapi": "^3.596.0",
     "@aws-sdk/util-dynamodb": "^3.596.0",
+    "aws-sdk": "^2.1692.0",
     "ioredis": "^5.4.1",
     "uuid": "^9.0.0"
   },
   "devDependencies": {
-    "aws-sdk": "^2.1692.0",
     "nodemon": "^3.0.0",
     "serverless": "^3.0.0"
   }

@@ -1,12 +1,11 @@
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
-const { DynamoDBDocumentClient, GetCommand, PutCommand, ScanCommand } = require("@aws-sdk/lib-dynamodb");
+const { DynamoDBDocumentClient, GetCommand, PutCommand, ScanCommand, BatchWriteCommand } = require("@aws-sdk/lib-dynamodb");
+
+const client = new DynamoDBClient({});
+const docClient = DynamoDBDocumentClient.from(client);
 
 class DynamoDbService {
   constructor() {
-    // Initialize the DynamoDB client
-    const client = new DynamoDBClient({ region: process.env.AWS_REGION });
-    // Use the document client for easier data manipulation
-    this.docClient = DynamoDBDocumentClient.from(client);
     this.tableName = process.env.DYNAMODB_PIXEL_TABLE;
   }
 
@@ -21,7 +20,7 @@ class DynamoDbService {
       TableName: this.tableName,
       Key: { xy: this.getPixelKey(x, y) },
     });
-    const { Item } = await this.docClient.send(command);
+    const { Item } = await docClient.send(command);
     return Item;
   }
 
@@ -42,7 +41,7 @@ class DynamoDbService {
       Item: pixelData,
     });
     
-    await this.docClient.send(command);
+    await docClient.send(command);
     return pixelData;
   }
 
@@ -50,8 +49,40 @@ class DynamoDbService {
   // This is a full table scan and should only be used to populate a cache.
   async getAllPixels() {
     const command = new ScanCommand({ TableName: this.tableName });
-    const { Items } = await this.docClient.send(command);
+    const { Items } = await docClient.send(command);
     return Items || [];
+  }
+
+  async putPixel(pixel) {
+    const command = new PutCommand({
+      TableName: this.tableName,
+      Item: pixel,
+    });
+    return docClient.send(command);
+  }
+
+  async batchWritePixels(pixels) {
+    // DynamoDB BatchWriteItem has a limit of 25 items per request.
+    const chunks = [];
+    for (let i = 0; i < pixels.length; i += 25) {
+      chunks.push(pixels.slice(i, i + 25));
+    }
+
+    for (const chunk of chunks) {
+      const putRequests = chunk.map(pixel => ({
+        PutRequest: {
+          Item: pixel,
+        },
+      }));
+
+      const command = new BatchWriteCommand({
+        RequestItems: {
+          [this.tableName]: putRequests,
+        },
+      });
+
+      await docClient.send(command);
+    }
   }
 }
 

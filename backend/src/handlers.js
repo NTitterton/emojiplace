@@ -212,16 +212,18 @@ module.exports.handleMessage = async (event) => {
           timestamp: new Date().toISOString(),
         };
 
-        await DynamoDbService.putPixel(pixelData);
-        await UserService.updateUserCooldown(userId);
-
-        console.log(`Pixel placed by ${userId} at (${x}, ${y}). Broadcasting.`);
-        
+        // Broadcast first for maximum perceived speed
         const allConnections = await UserService.getAllConnections();
         await broadcastMessage(allConnections, {
           type: 'pixel_placed',
           data: pixelData,
         });
+
+        // Now, update Redis and the user's cooldown
+        await CanvasService.placePixel(pixelData);
+        await UserService.updateUserCooldown(userId);
+
+        console.log(`Pixel placed by ${userId} at (${x}, ${y}). Redis updated.`);
 
         return { statusCode: 200, body: 'Pixel placed.' };
       }
