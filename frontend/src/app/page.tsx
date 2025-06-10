@@ -23,33 +23,6 @@ const getUserId = () => {
   return userId;
 };
 
-const fetchWithRetry = async (url: string, retries = 4, delay = 2500, timeout = 20000) => {
-  for (let i = 0; i < retries; i++) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-    try {
-      const response = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeoutId);
-      if (response.ok) {
-        return response.json();
-      }
-      // If the response is not OK, throw an error to trigger the retry.
-      throw new Error(`Request failed with status ${response.status}`);
-    } catch (error) {
-      clearTimeout(timeoutId);
-      console.warn(`Attempt ${i + 1} failed for ${url}. Retrying in ${delay / 1000}s...`, error);
-      if (i < retries - 1) {
-        await new Promise(res => setTimeout(res, delay));
-      } else {
-        console.error(`All retry attempts failed for ${url}.`);
-        throw new Error('All retry attempts failed.');
-      }
-    }
-  }
-  throw new Error('fetchWithRetry finished without returning a value.');
-};
-
 export default function Home() {
   const [pixels, setPixels] = useState<Pixel[]>([]);
   const [selectedEmoji, setSelectedEmoji] = useState('😀');
@@ -69,54 +42,56 @@ export default function Home() {
     setUserId(getUserId());
   }, []);
 
+  // Fetch initial data & poll for cooldown status
+  useEffect(() => {
+    if (!userId) return;
+    
+    fetchUserState();
+    fetchPixels();
+
+    // Poll for user state to update the cooldown status
+    const interval = setInterval(() => fetchUserState(), 5000);
+    return () => clearInterval(interval);
+  }, [userId]);
+
   // WebSocket connection
   useEffect(() => {
     if (!userId || !WS_URL) return;
 
     const websocket = new WebSocket(`${WS_URL}?userId=${userId}`);
-    
-    websocket.onopen = () => console.log('WebSocket connected');
-    
     websocket.onmessage = (event) => {
       const message: WebSocketMessage = JSON.parse(event.data);
       if (message.type === 'pixel_placed') {
+        // Add the new pixel to the local state to update the canvas
         setPixels(prev => [...prev.filter(p => !(p.x === message.data.x && p.y === message.data.y)), message.data]);
       }
     };
-    
-    websocket.onclose = () => console.log('WebSocket disconnected');
     setWs(websocket);
     
     return () => websocket.close();
   }, [userId]);
 
-  // Fetch initial data & poll for cooldown status
-  useEffect(() => {
-    if (!userId) return;
-
-    const initialize = async () => {
-      try {
-        setStatusMessage('Waking up the canvas...');
-        await Promise.all([fetchUserState(), fetchPixels()]);
-        setStatusMessage('');
-      } catch (error) {
-        setStatusMessage('Could not connect to the canvas. Please try refreshing.');
-        console.error('Initialization failed:', error);
-      }
-    };
-    
-    initialize();
-  }, [userId]);
-
   const fetchUserState = async () => {
     if (!userId) return;
-    const data = await fetchWithRetry(`${API_BASE}/api/users/me?userId=${userId}`);
-    setUserState(data);
+    try {
+      const response = await fetch(`${API_BASE}/api/users/me?userId=${userId}`);
+      if (response.ok) {
+        setUserState(await response.json());
+      }
+    } catch (error) {
+      console.error('Failed to fetch user state:', error);
+    }
   };
 
   const fetchPixels = async () => {
-    const data = await fetchWithRetry(`${API_BASE}/api/pixels/region/0/0/1000/1000`);
-    setPixels(data || []);
+    try {
+      const response = await fetch(`${API_BASE}/api/pixels/region/0/0/1000/1000`);
+      if (response.ok) {
+        setPixels(await response.json());
+      }
+    } catch (error) {
+      console.error('Failed to fetch pixels:', error);
+    }
   };
 
   const handlePixelClick = useCallback((x: number, y: number) => {
@@ -124,22 +99,14 @@ export default function Home() {
       alert('Cannot place pixel right now. Please wait for the cooldown.');
       return;
     }
-
+    
     ws.send(JSON.stringify({
       type: 'place_pixel',
       data: { x, y, emoji: selectedEmoji }
     }));
-
-    // Optimistically place pixel and trigger UI cooldown state
-    const optimisticPixel: Pixel = { 
-      x, y, emoji: selectedEmoji, 
-      username: userState.user.username, 
-      userId: userState.user.userId, 
-      timestamp: new Date().toISOString() 
-    };
-    setPixels(prev => [...prev.filter(p => !(p.x === x && p.y === y)), optimisticPixel]);
+    
+    // Optimistically update UI
     setUserState(prev => prev ? { ...prev, canPlace: false } : null);
-
   }, [ws, selectedEmoji, userState]);
 
   const handleViewportChange = useCallback((x: number, y: number) => {

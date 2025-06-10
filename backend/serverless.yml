@@ -107,13 +107,15 @@ functions:
       - httpApi:
           path: /api/pixels/region/{x}/{y}/{width}/{height}
           method: get
-  
+    provisionedConcurrency: 1
+
   getUser:
     handler: src/handlers.getUser
     events:
       - httpApi:
           path: /api/users/me
           method: get
+    provisionedConcurrency: 1
 
   setUsername:
     handler: src/handlers.setUsername
@@ -121,6 +123,7 @@ functions:
       - httpApi:
           path: /api/users/username
           method: post
+    # No provisioned concurrency needed for this less frequent action
 
   # WebSocket Handlers
   connectionHandler:
@@ -128,6 +131,7 @@ functions:
     events:
       - websocket:
           route: $connect
+    provisionedConcurrency: 1
 
   disconnectionHandler:
     handler: src/handlers.handleDisconnect
@@ -140,6 +144,7 @@ functions:
     events:
       - websocket:
           route: $default
+    provisionedConcurrency: 1
 
   snapshot:
     handler: src/snapshot.handler
