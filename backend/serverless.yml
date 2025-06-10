@@ -10,7 +10,8 @@ provider:
   region: us-west-1
   stage: ${opt:stage, 'dev'}
   profile: default # Using your 'default' AWS CLI profile
-  timeout: 30 # Revert to a standard 30s timeout
+  timeout: 29 # Best practice: Lambda timeout slightly less than API Gateway's 30s max.
+  versionFunctions: true # Required for provisioned concurrency
 
   # Provider-level configuration for httpApi to enable CORS for all functions
   httpApi:
@@ -36,7 +37,7 @@ provider:
       # This needs to be the actual ID of the security group, not the name.
       # You can find this in the AWS VPC Console under "Security Groups".
       # It will look like 'sg-0123456789abcdef0'.
-      - 'sg-08fddd39034da546d' 
+      - 'sg-005e6de7afff73792'
     subnetIds:
       # These need to be the actual IDs of the subnets you chose for your
       # ElastiCache subnet group. You can find these in the AWS VPC Console
@@ -100,6 +101,7 @@ functions:
       - httpApi:
           path: /api/pixels/{x}/{y}
           method: get
+    provisionedConcurrency: 1
 
   getPixelRegion:
     handler: src/handlers.getPixelRegion
@@ -111,6 +113,7 @@ functions:
 
   getUser:
     handler: src/handlers.getUser
+    # This is a critical user-facing function that needs to be fast.
     events:
       - httpApi:
           path: /api/users/me
@@ -123,6 +126,7 @@ functions:
       - httpApi:
           path: /api/users/username
           method: post
+    provisionedConcurrency: 1
     # No provisioned concurrency needed for this less frequent action
 
   # WebSocket Handlers
@@ -166,6 +170,34 @@ resources:
           - AttributeName: xy
             KeyType: HASH
         BillingMode: PAY_PER_REQUEST
+
+    # VPC Endpoint for DynamoDB (Gateway Endpoint)
+    # This allows Lambdas in the VPC to access DynamoDB without a NAT Gateway.
+    DynamoDBVpcEndpoint:
+      Type: AWS::EC2::VPCEndpoint
+      Properties:
+        # You can find your VPC ID in the AWS VPC Console. It's the VPC that
+        # your subnets and security group belong to.
+        VpcId: vpc-691e3e0d
+        ServiceName: com.amazonaws.${self:provider.region}.dynamodb
+        # You need to specify the route tables associated with your subnets.
+        # Find these in the VPC console, under Route Tables.
+        RouteTableIds:
+          - rtb-c68e7da1
+
+    # VPC Endpoint for API Gateway (Interface Endpoint)
+    # This allows Lambdas to post back to WebSocket clients via the
+    # execute-api without needing a NAT Gateway.
+    ExecuteApiVpcEndpoint:
+      Type: AWS::EC2::VPCEndpoint
+      Properties:
+        # You can find your VPC ID in the AWS VPC Console.
+        VpcId: vpc-691e3e0d
+        ServiceName: com.amazonaws.${self:provider.region}.execute-api
+        VpcEndpointType: Interface
+        SubnetIds: ${self:provider.vpc.subnetIds}
+        SecurityGroupIds: ${self:provider.vpc.securityGroupIds}
+        PrivateDnsEnabled: true
 
 # We can add custom AWS resources here later, such as VPC and Security Group
 # configurations needed for the ElastiCache instance.

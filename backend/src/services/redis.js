@@ -16,18 +16,11 @@ class RedisService {
       client = new Redis({
         host: process.env.REDIS_HOST,
         port: process.env.REDIS_PORT,
-        // These options are important for serverless environments
-        // to prevent hanging connections.
-        lazyConnect: true,
-        showFriendlyErrorStack: true,
-        enableAutoPipelining: true,
-        maxRetriesPerRequest: 0,
-        retryStrategy: (times) => {
-          if (times > 3) {
-            return null; // Stop retrying after 3 attempts
-          }
-          return Math.min(times * 200, 1000);
-        },
+        // The 'tls' option is required if connecting to a Redis cluster
+        // with in-transit encryption enabled.
+        tls: {},
+        // Set a long timeout and connect eagerly.
+        connectTimeout: 30000, 
       });
     }
     

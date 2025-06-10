@@ -1,9 +1,8 @@
-const AWS = require('aws-sdk');
 const { CanvasService } = require('./services/canvas');
 const { UserService } = require('./services/user');
 const { RedisService } = require('./services/redis');
 const { DynamoDbService } = require('./services/dynamo');
-const { ApiGatewayManagementApi } = require('@aws-sdk/client-apigatewaymanagementapi');
+const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
 const { v4: uuidv4 } = require('uuid');
 
 // Initialize services.
@@ -16,7 +15,9 @@ const userService = UserService;
 // Initialize ApiGatewayManagementApi for sending WebSocket messages
 // This is done outside the handler for potential reuse.
 const getApiGatewayManagementApi = () => {
-  return new AWS.ApiGatewayManagementApi({
+  // The endpoint needs to be constructed dynamically based on the request's domain and stage.
+  // This is a more robust way to handle it in a serverless environment.
+  return new ApiGatewayManagementApiClient({
     apiVersion: '2018-11-29',
     endpoint: process.env.WEBSOCKET_API_ENDPOINT,
   });
@@ -162,7 +163,8 @@ const broadcastMessage = async (connectionIds, messageData) => {
   const apiGateway = getApiGatewayManagementApi();
   const postCalls = connectionIds.map(async (id) => {
     try {
-      await apiGateway.postToConnection({ ConnectionId: id, Data: JSON.stringify(messageData) }).promise();
+      const command = new PostToConnectionCommand({ ConnectionId: id, Data: JSON.stringify(messageData) });
+      await apiGateway.send(command);
     } catch (e) {
       if (e.statusCode === 410) {
         // This connection is stale. Remove it from our store.
