@@ -24,10 +24,10 @@ const createApiResponse = (statusCode, body) => {
  */
 async function getPixelRegion(event) {
   try {
-    const { chunkX, chunkY } = event.pathParameters;
+    const { x, y } = event.pathParameters;
     
-    // Pass chunk coords directly to getChunkKey
-    const s3Key = getChunkKey(chunkX, chunkY);
+    // We need to determine which chunk the x,y coordinates fall into.
+    const s3Key = getChunkKey(parseInt(x, 10), parseInt(y, 10));
     
     // The CloudFront URL is passed as an environment variable
     const cloudFrontUrl = process.env.CLOUDFRONT_URL;
@@ -98,7 +98,7 @@ async function handleMessage(event) {
         }
         
         // --- Cooldown Logic ---
-        const { canPlace, remaining } = await checkUserCooldown(ip);
+        const { canPlace, remaining } = await checkUserCooldown(username);
 
         if (!canPlace) {
           await sendToConnection(connectionId, {
@@ -114,7 +114,7 @@ async function handleMessage(event) {
         await Promise.all([
             updateChunk(x, y, pixelData),
             broadcast({ type: 'pixelPlaced', data: pixelData }),
-            updateUserCooldown(ip),
+            updateUserCooldown(username),
         ]);
         
         console.log(`Pixel placed by ${username} at (${x}, ${y}).`);

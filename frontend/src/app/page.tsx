@@ -1,281 +1,195 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { v4 as uuidv4 } from 'uuid';
-import Canvas from '../components/Canvas';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import useWebSocket, { ReadyState } from 'react-use-websocket';
+import { Pixel, WebSocketMessage } from '../types';
+import Canvas, { CanvasRef } from '../components/Canvas';
 import EmojiPicker from '../components/EmojiPicker';
-import { Pixel, UserState, WebSocketMessage } from '../types';
+import { v4 as uuidv4 } from 'uuid';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL;
-
-console.log("API_BASE:", API_BASE);
-console.log("WS_URL:", WS_URL);
-
-// Function to get or create a userId from localStorage
+// Helper to get or set a unique user ID from local storage
 const getUserId = () => {
-  if (typeof window === 'undefined') return null;
-  let userId = localStorage.getItem('emojiplace_userId');
-  if (!userId) {
-    userId = uuidv4();
-    localStorage.setItem('emojiplace_userId', userId);
+  if (typeof window !== 'undefined') {
+    let uid = localStorage.getItem('emojiPlaceUserId');
+    if (!uid) {
+      uid = uuidv4();
+      localStorage.setItem('emojiPlaceUserId', uid);
+    }
+    return uid;
   }
-  return userId;
+  return null;
 };
 
+// Tooltip component for hover info and cooldown messages
+const Tooltip = ({ content, position }: { content: React.ReactNode, position: { x: number, y: number } | null }) => {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  if (!content || !position || !mounted) return null;
+
+  // Render in a portal to escape parent styling and prevent hover conflicts
+  return createPortal(
+    <div
+      className="absolute top-0 left-0 bg-gray-800 text-white text-sm rounded-md shadow-lg p-2 z-50 pointer-events-none"
+      style={{
+        transform: `translate(${position.x + 15}px, ${position.y + 15}px)`,
+      }}
+    >
+      {content}
+    </div>,
+    document.body
+  );
+};
+
+
 export default function Home() {
-  const [pixels, setPixels] = useState<Pixel[]>([]);
+  const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001';
+  const canvasRef = useRef<CanvasRef>(null);
+  const [userId] = useState(getUserId());
+  const [username, setUsername] = useState('guest');
+  const [tempUsername, setTempUsername] = useState('guest');
+  const [pixels, setPixels] = useState<Record<string, Pixel>>({});
   const [selectedEmoji, setSelectedEmoji] = useState('😀');
-  const [userState, setUserState] = useState<UserState | null>(null);
-  const [hoveredPixel, setHoveredPixel] = useState<Pixel | null>(null);
-  const [viewportX, setViewportX] = useState(0);
-  const [viewportY, setViewportY] = useState(0);
-  const [jumpCoords, setJumpCoords] = useState({ x: '', y: '' });
-  const [usernameInput, setUsernameInput] = useState('');
-  const [userId, setUserId] = useState<string | null>(null);
-  const [ws, setWs] = useState<WebSocket | null>(null);
-  const [cooldownTime, setCooldownTime] = useState<number | null>(null);
-  const [statusMessage, setStatusMessage] = useState('Initializing...');
+  const [tooltip, setTooltip] = useState<{ content: React.ReactNode; position: { x: number, y: number } | null } | null>(null);
+  const [jumpCoords, setJumpCoords] = useState({ x: '0', y: '0' });
 
-  // Set userId on initial client-side load
+  const { lastMessage, sendJsonMessage, readyState } = useWebSocket(wsUrl, {
+    onOpen: () => console.log('WebSocket connected'),
+    onClose: () => console.log('WebSocket disconnected'),
+    shouldReconnect: (closeEvent) => true,
+  });
+
   useEffect(() => {
-    setUserId(getUserId());
-  }, []);
-
-  // Fetch initial data & poll for cooldown status
-  useEffect(() => {
-    if (!userId) return;
-    
-    fetchUserState();
-    fetchPixels();
-
-    // Poll for user state to update the cooldown status
-    const interval = setInterval(() => fetchUserState(), 5000);
-    return () => clearInterval(interval);
-  }, [userId]);
-
-  // WebSocket connection
-  useEffect(() => {
-    if (!userId || !WS_URL) return;
-
-    const websocket = new WebSocket(`${WS_URL}?userId=${userId}`);
-    websocket.onmessage = (event) => {
-      const message: WebSocketMessage = JSON.parse(event.data);
-      if (message.type === 'pixel_placed') {
-        // Add the new pixel to the local state to update the canvas
-        setPixels(prev => [...prev.filter(p => !(p.x === message.data.x && p.y === message.data.y)), message.data]);
+    if (lastMessage !== null) {
+      const message: WebSocketMessage = JSON.parse(lastMessage.data as string);
+      switch (message.type) {
+        case 'pixelPlaced':
+          setPixels(prev => ({ ...prev, [`${message.data.x},${message.data.y}`]: message.data }));
+          break;
+        case 'cooldownViolation':
+          setTooltip({
+            content: <div className="text-red-400">{message.message}</div>,
+            // Position in center of screen for alerts
+            position: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+          });
+          setTimeout(() => setTooltip(null), 2000); // Hide after 2 seconds
+          break;
       }
-    };
-    setWs(websocket);
-    
-    return () => websocket.close();
-  }, [userId]);
-
-  const fetchUserState = async () => {
-    if (!userId) return;
-    try {
-      const response = await fetch(`${API_BASE}/api/users/me?userId=${userId}`);
-      if (response.ok) {
-        setUserState(await response.json());
-      }
-    } catch (error) {
-      console.error('Failed to fetch user state:', error);
     }
-  };
+  }, [lastMessage]);
 
-  const fetchPixels = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/api/pixels/region/0/0/1000/1000`);
-      if (response.ok) {
-        setPixels(await response.json());
-      }
-    } catch (error) {
-      console.error('Failed to fetch pixels:', error);
-    }
+  const handleSetUsername = () => {
+    setUsername(tempUsername);
   };
-
+  
   const handlePixelClick = useCallback((x: number, y: number) => {
-    if (!ws || !userState?.canPlace) {
-      alert('Cannot place pixel right now. Please wait for the cooldown.');
-      return;
+    if (readyState === ReadyState.OPEN) {
+      sendJsonMessage({
+        type: 'placePixel',
+        data: { x, y, emoji: selectedEmoji, username: username || 'guest' }
+      });
+    } else {
+      console.log('WebSocket is not connected.');
     }
-    
-    ws.send(JSON.stringify({
-      type: 'place_pixel',
-      data: { x, y, emoji: selectedEmoji }
-    }));
-    
-    // Optimistically update UI
-    setUserState(prev => prev ? { ...prev, canPlace: false } : null);
-  }, [ws, selectedEmoji, userState]);
+  }, [readyState, sendJsonMessage, selectedEmoji, username]);
 
-  const handleViewportChange = useCallback((x: number, y: number) => {
-    setViewportX(x);
-    setViewportY(y);
+  const handlePixelHover = useCallback((pixel: Pixel | null, mouseX: number, mouseY: number) => {
+    if (pixel) {
+      setTooltip({
+        content: (
+          <div>
+            <p className="font-bold">{pixel.emoji}</p>
+            <p>Placed by: {pixel.username}</p>
+            <p>At: {new Date(pixel.lastModified).toLocaleString()}</p>
+          </div>
+        ),
+        position: { x: mouseX, y: mouseY },
+      });
+    } else {
+      setTooltip(null);
+    }
   }, []);
 
-  const handleJump = () => {
-    const x = parseInt(jumpCoords.x);
-    const y = parseInt(jumpCoords.y);
-    
+  const handleJumpTo = () => {
+    const x = parseInt(jumpCoords.x, 10);
+    const y = parseInt(jumpCoords.y, 10);
     if (!isNaN(x) && !isNaN(y)) {
-      // Center the coordinates and fetch pixels immediately
-      const newViewportX = x - 25;
-      const newViewportY = y - 15;
-      setViewportX(newViewportX);
-      setViewportY(newViewportY);
-      
-      // Force immediate pixel fetch for the new location
-      setTimeout(() => {
-        fetchPixels();
-      }, 100);
+      canvasRef.current?.jumpTo(x, y);
     }
   };
 
-  const handleSetUsername = async () => {
-    if (!userId || !usernameInput.trim()) return;
-    
-    try {
-      const response = await fetch(`${API_BASE}/api/users/username`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, username: usernameInput.trim() })
-      });
-      
-      if (response.ok) {
-        const { user } = await response.json();
-        setUserState(prev => prev ? { ...prev, user } : null);
-        setUsernameInput(''); // Clear input on success
-      }
-    } catch (error) {
-      console.error('Failed to set username:', error);
-    }
-  };
-
-  const getCooldownDisplay = () => {
-    if (!cooldownTime) return null;
-    
-    const remainingMs = cooldownTime - Date.now();
-    if (remainingMs <= 0) return null;
-    
-    const minutes = Math.floor(remainingMs / 60000);
-    const seconds = Math.floor((remainingMs % 60000) / 1000);
-    
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  };
-
-  if (statusMessage) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <h1 className="text-2xl font-bold">{statusMessage}</h1>
-      </div>
-    );
-  }
+  const connectionStatus = {
+    [ReadyState.CONNECTING]: 'Connecting...',
+    [ReadyState.OPEN]: 'Connected',
+    [ReadyState.CLOSING]: 'Closing...',
+    [ReadyState.CLOSED]: 'Disconnected',
+    [ReadyState.UNINSTANTIATED]: 'Uninstantiated',
+  }[readyState];
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
-      <div className="max-w-6xl mx-auto">
-        <h1 className="text-4xl font-bold text-center mb-8">🎨 EmojiPlace</h1>
+    // Main container for the full-screen layout
+    <main className="h-screen w-screen bg-gray-100 relative overflow-hidden">
+      <Tooltip content={tooltip?.content} position={tooltip?.position} />
+      
+      {/* Canvas takes up the full space in the background */}
+      <div className="absolute top-0 left-0 w-full h-full z-0">
+        <Canvas
+          ref={canvasRef}
+          pixels={pixels}
+          onPixelClick={handlePixelClick}
+          onPixelHover={handlePixelHover}
+        />
+      </div>
+
+      {/* Floating UI Panel */}
+      <div className="absolute top-4 left-4 bg-white/80 backdrop-blur-sm rounded-lg shadow-xl p-4 space-y-4 max-w-sm z-10">
+        <h1 className="text-2xl font-bold">EmojiPlace</h1>
+        <p className="text-sm text-gray-600">Connection: {connectionStatus}</p>
         
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <div className="lg:col-span-3">
-            <div className="bg-white p-4 rounded-lg shadow-lg">
-              <div className="mb-4 flex items-center justify-between">
-                <div className="text-sm text-gray-600">
-                  Viewport: ({viewportX}, {viewportY}) to ({viewportX + 49}, {viewportY + 29})
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    placeholder="X"
-                    value={jumpCoords.x}
-                    onChange={(e) => setJumpCoords(prev => ({ ...prev, x: e.target.value }))}
-                    className="w-20 px-2 py-1 border border-gray-300 rounded"
-                  />
-                  <input
-                    type="number"
-                    placeholder="Y"
-                    value={jumpCoords.y}
-                    onChange={(e) => setJumpCoords(prev => ({ ...prev, y: e.target.value }))}
-                    className="w-20 px-2 py-1 border border-gray-300 rounded"
-                  />
-                  <button
-                    onClick={handleJump}
-                    className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
-                  >
-                    Jump
-                  </button>
-                </div>
-              </div>
-              
-              <Canvas
-                pixels={pixels}
-                onPixelClick={handlePixelClick}
-                onPixelHover={setHoveredPixel}
-                viewportX={viewportX}
-                viewportY={viewportY}
-                onViewportChange={handleViewportChange}
-              />
-              
-              <div className="mt-4 text-sm text-gray-600">
-                Click to place emoji • Drag to move around • Hover for info
-              </div>
-            </div>
-          </div>
-          
-          <div className="space-y-4">
-            {/* User Info */}
-            <div className="bg-white p-4 rounded-lg shadow-lg">
-              <h3 className="font-semibold mb-2">User Info</h3>
-              {userState && (
-                <div className="space-y-2 text-sm">
-                  <div>Username: {userState.user.username || 'Not set'}</div>
-                  <div>Can place: {userState.canPlace ? '✅' : '❌'}</div>
-                  {cooldownTime && (
-                    <div className="text-red-600">
-                      Cooldown: {getCooldownDisplay()}
-                    </div>
-                  )}
-                </div>
-              )}
-              
-              <div className="mt-3 flex gap-2">
+        {/* User Info Section */}
+        <div>
+            <h2 className="font-bold">Hello, {username}!</h2>
+            <div className="flex items-center space-x-2 mt-1">
                 <input
-                  type="text"
-                  placeholder="Set username"
-                  value={usernameInput}
-                  onChange={(e) => setUsernameInput(e.target.value)}
-                  className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
-                  maxLength={20}
+                    type="text"
+                    value={tempUsername}
+                    onChange={(e) => setTempUsername(e.target.value)}
+                    className="border rounded px-2 py-1 text-sm w-full"
+                    placeholder="Enter username"
                 />
-                <button
-                  onClick={handleSetUsername}
-                  className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
-                >
-                  Set
-                </button>
-              </div>
+                <button onClick={handleSetUsername} className="bg-blue-500 text-white rounded px-3 py-1 text-sm flex-shrink-0">Set</button>
             </div>
-            
-            {/* Emoji Picker */}
-            <div className="bg-white p-4 rounded-lg shadow-lg">
-              <h3 className="font-semibold mb-2">Select Emoji</h3>
-              <EmojiPicker
-                onEmojiSelect={setSelectedEmoji}
-                selectedEmoji={selectedEmoji}
-              />
+        </div>
+        
+        {/* Jump To Section */}
+        <div>
+            <h2 className="font-bold">Jump to Coordinate</h2>
+            <div className="flex items-center space-x-2 mt-1">
+                <input
+                    type="number"
+                    value={jumpCoords.x}
+                    onChange={(e) => setJumpCoords(c => ({...c, x: e.target.value}))}
+                    className="border rounded px-2 py-1 text-sm w-full"
+                    placeholder="X"
+                />
+                <input
+                    type="number"
+                    value={jumpCoords.y}
+                    onChange={(e) => setJumpCoords(c => ({...c, y: e.target.value}))}
+                    className="border rounded px-2 py-1 text-sm w-full"
+                    placeholder="Y"
+                />
+                <button onClick={handleJumpTo} className="bg-green-500 text-white rounded px-3 py-1 text-sm flex-shrink-0">Jump</button>
             </div>
-            
-            {/* Connection Status */}
-            <div className="bg-white p-4 rounded-lg shadow-lg">
-              <h3 className="font-semibold mb-2">Connection</h3>
-              <div className={`text-sm ${ws ? 'text-green-600' : 'text-red-600'}`}>
-                {ws ? '🟢 Connected' : '🔴 Disconnected'}
-              </div>
-            </div>
-          </div>
+        </div>
+        
+        {/* Emoji Picker */}
+        <div>
+            <h2 className="font-bold">Select Emoji</h2>
+            <EmojiPicker onEmojiSelect={setSelectedEmoji} selectedEmoji={selectedEmoji} />
         </div>
       </div>
-    </div>
+    </main>
   );
 } 

@@ -77,8 +77,8 @@ functions:
     handler: src/handlers.getPixelRegion
     events:
       - httpApi:
-          # Note: The path now takes chunk coordinates directly for simplicity and robustness
-          path: /api/pixels/chunk/{chunkX}/{chunkY}
+          # Note: The new handler redirects, so we only need x/y
+          path: /api/pixels/region/{x}/{y}
           method: get
 
   # WebSocket Handlers
@@ -130,10 +130,10 @@ resources:
       Properties:
         TableName: ${self:provider.environment.DYNAMODB_COOLDOWN_TABLE}
         AttributeDefinitions:
-          - AttributeName: ip
+          - AttributeName: username
             AttributeType: S
         KeySchema:
-          - AttributeName: ip
+          - AttributeName: username
             KeyType: HASH
         BillingMode: PAY_PER_REQUEST
     ChunksBucket:

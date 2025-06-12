@@ -3,23 +3,15 @@ export interface Pixel {
   y: number;
   emoji: string;
   username: string;
-  userId: string; // This line is important
-  timestamp: string;
+  lastModified: string;
 }
 
-export interface User {
-  userId: string; // And this line
-  username: string;
-}
-
-export interface UserState {
-  user: User;
-  canPlace: boolean;
-}
-
-export interface WebSocketMessage {
-  type: 'pixel_placed' | 'place_error' | 'place_success';
-  data?: any;
-  message?: string;
-  cooldownEnd?: number;
-}
+export type WebSocketMessage = 
+  | {
+      type: 'pixelPlaced';
+      data: Pixel;
+    }
+  | {
+      type: 'cooldownViolation';
+      message: string;
+    };
