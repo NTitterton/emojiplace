@@ -12,6 +12,7 @@
     "next": "14.0.0",
     "react": "^18",
     "react-dom": "^18",
+    "react-use-websocket": "^4.13.0",
     "uuid": "^11.1.0",
     "ws": "^8.14.0"
   },

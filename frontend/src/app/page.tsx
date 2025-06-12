@@ -82,7 +82,7 @@ export default function Home() {
   const handleSetUsername = () => {
     setUsername(tempUsername);
   };
-  
+
   const handlePixelClick = useCallback((x: number, y: number) => {
     if (readyState === ReadyState.OPEN) {
       sendJsonMessage({
@@ -160,20 +160,20 @@ export default function Home() {
                 />
                 <button onClick={handleSetUsername} className="bg-blue-500 text-white rounded px-3 py-1 text-sm flex-shrink-0">Set</button>
             </div>
-        </div>
+                </div>
         
         {/* Jump To Section */}
         <div>
             <h2 className="font-bold">Jump to Coordinate</h2>
             <div className="flex items-center space-x-2 mt-1">
-                <input
+                  <input
                     type="number"
                     value={jumpCoords.x}
                     onChange={(e) => setJumpCoords(c => ({...c, x: e.target.value}))}
                     className="border rounded px-2 py-1 text-sm w-full"
                     placeholder="X"
-                />
-                <input
+                  />
+                  <input
                     type="number"
                     value={jumpCoords.y}
                     onChange={(e) => setJumpCoords(c => ({...c, y: e.target.value}))}
@@ -181,10 +181,10 @@ export default function Home() {
                     placeholder="Y"
                 />
                 <button onClick={handleJumpTo} className="bg-green-500 text-white rounded px-3 py-1 text-sm flex-shrink-0">Jump</button>
+              </div>
             </div>
-        </div>
-        
-        {/* Emoji Picker */}
+            
+            {/* Emoji Picker */}
         <div>
             <h2 className="font-bold">Select Emoji</h2>
             <EmojiPicker onEmojiSelect={setSelectedEmoji} selectedEmoji={selectedEmoji} />

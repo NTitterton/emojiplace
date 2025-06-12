@@ -171,7 +171,7 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ pixels, onPixelClick, onPix
     if (!ctx) return;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
+
     // Draw the grid first
     drawGrid(ctx, canvas.width, canvas.height);
     
@@ -196,7 +196,7 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ pixels, onPixelClick, onPix
   useEffect(() => {
     drawCanvas();
   }, [drawCanvas]);
-  
+
   // Mouse and interaction handlers
   const getPixelCoordinates = (clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
