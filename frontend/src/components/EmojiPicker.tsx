@@ -165,7 +165,7 @@ export default function EmojiPicker({ onEmojiSelect, selectedEmoji }: EmojiPicke
       </button>
       
       {isOpen && (
-        <div className="absolute top-full left-0 mt-2 w-96 p-4 bg-white border border-gray-300 rounded-lg shadow-lg z-10 max-h-96 overflow-hidden">
+        <div className="absolute top-full left-0 mt-2 w-96 p-4 bg-white border border-gray-300 rounded-lg shadow-lg z-10 max-h-96">
           {/* Search bar */}
           <div className="mb-3">
             <input
@@ -200,7 +200,7 @@ export default function EmojiPicker({ onEmojiSelect, selectedEmoji }: EmojiPicke
           </div>
           
           {/* Emoji grid */}
-          <div className="overflow-y-auto max-h-60">
+          <div className="h-72 overflow-y-auto">
             <div className="grid grid-cols-8 gap-1">
               {getFilteredEmojis().map((emoji, index) => (
               <button
