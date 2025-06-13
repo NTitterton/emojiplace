@@ -2,7 +2,6 @@ const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/clien
 const { CHUNK_SIZE } = require('./constants');
 
 const s3Client = new S3Client({ region: process.env.AWS_REGION });
-const bucketName = process.env.S3_CHUNK_BUCKET;
 
 /**
  * Generates the S3 key for a chunk based on its top-left coordinate.
@@ -22,6 +21,7 @@ function getChunkKey(x, y) {
  * @returns {Promise<object | null>} The parsed chunk data, or null if not found.
  */
 async function getChunk(key) {
+  const bucketName = process.env.S3_CHUNK_BUCKET;
   const command = new GetObjectCommand({
     Bucket: bucketName,
     Key: key,
@@ -47,6 +47,7 @@ async function getChunk(key) {
  * @param {object} pixelData The data for the pixel to update.
  */
 async function updateChunk(x, y, pixelData) {
+  const bucketName = process.env.S3_CHUNK_BUCKET;
   const key = getChunkKey(x, y);
   let chunk = (await getChunk(key)) || {};
 

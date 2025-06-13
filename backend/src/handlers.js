@@ -1,5 +1,5 @@
 const { addConnection, removeConnection, placePixel, checkUserCooldown, updateUserCooldown } = require('./services/dynamo');
-const { updateChunk, getChunkKey } = require('./s3');
+const { updateChunk, getChunkKey, getChunk } = require('./s3');
 const { broadcast, sendToConnection } = require('./websocket');
 const { CHUNK_SIZE } = require('./constants');
 
@@ -9,8 +9,8 @@ const createApiResponse = (statusCode, body) => {
     statusCode,
     headers: {
       'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*', // CORS enabled for all origins
-      'Access-Control-Allow-Credentials': true,
+      // CORS is handled by the infrastructure (API Gateway, S3, CloudFront).
+      // We do not need to add these headers manually in the Lambda function.
     },
     body: JSON.stringify(body),
   };
@@ -25,24 +25,22 @@ const createApiResponse = (statusCode, body) => {
 async function getPixelRegion(event) {
   try {
     const { x, y } = event.pathParameters;
-    
-    // We need to determine which chunk the x,y coordinates fall into.
     const s3Key = getChunkKey(parseInt(x, 10), parseInt(y, 10));
-    
-    // The CloudFront URL is passed as an environment variable
-    const cloudFrontUrl = process.env.CLOUDFRONT_URL;
-    const redirectUrl = `https://${cloudFrontUrl}/${s3Key}`;
 
-    return {
-      statusCode: 302, // 302 Found - temporary redirect
-      headers: {
-        'Location': redirectUrl,
-      },
-    };
+    // Act as a proxy: Fetch the chunk from S3 and return its content.
+    const chunkContent = await getChunk(s3Key);
+    
+    // The chunk might not exist if no pixels have been placed in it.
+    // In this case, getChunk returns null. We should return an empty object.
+    const responseBody = chunkContent || {};
+    
+    return createApiResponse(200, responseBody);
 
   } catch (error) {
+    // The existing getChunk function already handles 'NoSuchKey' by returning null,
+    // so we don't need to catch it here. We only need to catch other errors.
     console.error('Error in getPixelRegion handler:', error);
-    return createApiResponse(500, { message: 'Internal Server Error' });
+    return createApiResponse(500, { message: 'Internal ServerError' });
   }
 }
 

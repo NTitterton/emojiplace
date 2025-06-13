@@ -16,7 +16,7 @@ provider:
 
   # Provider-level configuration for httpApi to enable CORS for all functions
   httpApi:
-    cors: true
+    cors: true # API now returns data directly, so it needs to handle CORS.
 
   # Environment variables that will be available to all your Lambda functions
   environment:
@@ -169,9 +169,9 @@ resources:
             CachedMethods:
               - GET
               - HEAD
-            # Use a managed policy for CORS with S3
-            OriginRequestPolicyId: '88a5eaf4-2fd4-4709-b370-b4c650ea3fcf' # CORS-S3Origin
-            CachePolicyId: '658327ea-f89d-4fab-a63d-7e88639e58f6' # CachingOptimized
+            # Use our own explicit policies instead of managed ones
+            OriginRequestPolicyId: !Ref ChunksOriginRequestPolicy
+            CachePolicyId: !Ref ChunksCachePolicy
           DefaultRootObject: ''
           ViewerCertificate:
             CloudFrontDefaultCertificate: true
@@ -193,7 +193,39 @@ resources:
               Effect: Allow
               Resource: !Sub "arn:aws:s3:::${ChunksBucket}/*"
               Principal:
-                CanonicalUser: !GetAtt OAI.S3CanonicalUserId
+                AWS: !Sub "arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity ${OAI}"
+    ChunksOriginRequestPolicy:
+      Type: AWS::CloudFront::OriginRequestPolicy
+      Properties:
+        OriginRequestPolicyConfig:
+          Name: Chunks-CORS-Policy-${self:provider.stage}
+          Comment: Forwards Origin header for S3 CORS
+          HeadersConfig:
+            HeaderBehavior: whitelist
+            Headers:
+              - Origin
+          CookiesConfig:
+            CookieBehavior: none
+          QueryStringsConfig:
+            QueryStringBehavior: none
+    ChunksCachePolicy:
+      Type: AWS::CloudFront::CachePolicy
+      Properties:
+        CachePolicyConfig:
+          Name: Chunks-Cache-Policy-${self:provider.stage}
+          Comment: Caching policy for S3 chunks
+          DefaultTTL: 86400 # 1 day
+          MaxTTL: 31536000 # 1 year
+          MinTTL: 1 # 1 second
+          ParametersInCacheKeyAndForwardedToOrigin:
+            CookiesConfig:
+              CookieBehavior: none
+            HeadersConfig:
+              HeaderBehavior: none
+            QueryStringsConfig:
+              QueryStringBehavior: none
+            EnableAcceptEncodingBrotli: true
+            EnableAcceptEncodingGzip: true
 
 # We can add custom AWS resources here later, such as VPC and Security Group
 # configurations needed for the ElastiCache instance.
