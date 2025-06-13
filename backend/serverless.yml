@@ -143,24 +143,22 @@ resources:
         CorsConfiguration:
           CorsRules:
             - AllowedOrigins:
-                - '*'
+                - 'https://emojiplace.vercel.app'
+                - 'http://localhost:3000'
               AllowedMethods:
                 - GET
-                - PUT
-                - DELETE
-                - HEAD
               AllowedHeaders:
                 - '*'
     ChunksCloudFront:
       Type: AWS::CloudFront::Distribution
       Properties:
         DistributionConfig:
+          Comment: 'EmojiPlace Chunks Distribution - Forcing update'
           Enabled: true
           Origins:
-            - DomainName: !GetAtt ChunksBucket.RegionalDomainName # Use regional domain for performance
+            - DomainName: !GetAtt ChunksBucket.RegionalDomainName
               Id: S3Origin
               S3OriginConfig:
-                # This is the crucial part: sets up secure access for CloudFront
                 OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${OAI}"
           DefaultCacheBehavior:
             TargetOriginId: S3Origin
@@ -171,10 +169,9 @@ resources:
             CachedMethods:
               - GET
               - HEAD
-            ForwardedValues:
-              QueryString: false
-              Cookies:
-                Forward: none
+            # Use a managed policy for CORS with S3
+            OriginRequestPolicyId: '88a5eaf4-2fd4-4709-b370-b4c650ea3fcf' # CORS-S3Origin
+            CachePolicyId: '658327ea-f89d-4fab-a63d-7e88639e58f6' # CachingOptimized
           DefaultRootObject: ''
           ViewerCertificate:
             CloudFrontDefaultCertificate: true
