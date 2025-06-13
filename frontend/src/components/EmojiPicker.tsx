@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { EMOJI_DATA } from '../lib/emoji-data';
 
 interface EmojiPickerProps {
   onEmojiSelect: (emoji: string) => void;
@@ -8,6 +9,7 @@ interface EmojiPickerProps {
 }
 
 const EMOJI_CATEGORIES = {
+  'All': Object.keys(EMOJI_DATA),
   'Smileys & People': [
   '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇',
   '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚',
@@ -141,18 +143,28 @@ const EMOJI_CATEGORIES = {
 
 export default function EmojiPicker({ onEmojiSelect, selectedEmoji }: EmojiPickerProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState('Smileys & People');
+  const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
 
   const getFilteredEmojis = () => {
-    const emojis = EMOJI_CATEGORIES[selectedCategory as keyof typeof EMOJI_CATEGORIES];
-    if (!searchTerm) return emojis;
+    const term = searchTerm.toLowerCase();
+    if (!term) {
+      return EMOJI_CATEGORIES[selectedCategory as keyof typeof EMOJI_CATEGORIES];
+    }
     
-    // Simple search - could be enhanced with emoji names/keywords
-    return emojis.filter(emoji => 
-      emoji.includes(searchTerm) || 
-      selectedCategory.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    // Get the list of emojis to search from the selected category
+    const emojisToSearch = EMOJI_CATEGORIES[selectedCategory as keyof typeof EMOJI_CATEGORIES];
+
+    // Filter based on name, keywords, or the emoji character itself
+    return emojisToSearch.filter(emoji => {
+      const emojiInfo = EMOJI_DATA[emoji];
+      if (!emojiInfo) return false;
+
+      return (
+        emojiInfo.name.includes(term) ||
+        emojiInfo.keywords.some(keyword => keyword.includes(term))
+      );
+    });
   };
 
   return (
@@ -165,7 +177,7 @@ export default function EmojiPicker({ onEmojiSelect, selectedEmoji }: EmojiPicke
       </button>
       
       {isOpen && (
-        <div className="absolute top-full left-0 mt-2 w-96 p-4 bg-white border border-gray-300 rounded-lg shadow-lg z-10 max-h-96">
+        <div className="absolute top-full left-0 mt-2 w-96 bg-white border border-gray-300 rounded-lg shadow-lg z-10 p-4">
           {/* Search bar */}
           <div className="mb-3">
             <input
@@ -199,8 +211,10 @@ export default function EmojiPicker({ onEmojiSelect, selectedEmoji }: EmojiPicke
             </div>
           </div>
           
-          {/* Emoji grid */}
-          <div className="h-72 overflow-y-auto">
+          {/* Emoji grid with fixed height */}
+          <div className="h-72 overflow-y-auto pr-2  
+                        scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-100 
+                        scrollbar-thumb-rounded-full scrollbar-track-rounded-full">
             <div className="grid grid-cols-8 gap-1">
               {getFilteredEmojis().map((emoji, index) => (
               <button
