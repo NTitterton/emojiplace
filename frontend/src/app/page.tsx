@@ -8,6 +8,25 @@ import Canvas, { CanvasRef } from '../components/Canvas';
 import EmojiPicker from '../components/EmojiPicker';
 import { v4 as uuidv4 } from 'uuid';
 
+// Tooltip component is now defined outside of the Home component.
+// This prevents it from being re-created on every render.
+const Tooltip = ({ content, position }: { content: React.ReactNode, position: { x: number, y: number } | null }) => {
+  if (!content || !position) {
+    return null;
+  }
+
+  return (
+    <div
+      className="absolute top-0 left-0 bg-gray-800 text-white text-sm rounded-md shadow-lg p-2 z-50 pointer-events-none"
+      style={{
+        transform: `translate(${position.x + 15}px, ${position.y + 15}px)`,
+      }}
+    >
+      {content}
+    </div>
+  );
+};
+
 // Helper to get or set a unique user ID from local storage
 const getUserId = () => {
   if (typeof window !== 'undefined') {
@@ -20,28 +39,6 @@ const getUserId = () => {
   }
   return null;
 };
-
-// Tooltip component for hover info and cooldown messages
-const Tooltip = ({ content, position }: { content: React.ReactNode, position: { x: number, y: number } | null }) => {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-
-  if (!content || !position || !mounted) return null;
-
-  // Render in a portal to escape parent styling and prevent hover conflicts
-  return createPortal(
-    <div
-      className="absolute top-0 left-0 bg-gray-800 text-white text-sm rounded-md shadow-lg p-2 z-50 pointer-events-none"
-      style={{
-        transform: `translate(${position.x + 15}px, ${position.y + 15}px)`,
-      }}
-    >
-      {content}
-    </div>,
-    document.body
-  );
-};
-
 
 export default function Home() {
   const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001';

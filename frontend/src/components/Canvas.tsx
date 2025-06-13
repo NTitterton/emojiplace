@@ -57,8 +57,9 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ pixels, onPixelClick, onPix
   const viewportRef = useRef(viewport);
   viewportRef.current = viewport;
   
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  // A more robust state for mouse interactions
+  const [mouseState, setMouseState] = useState<'idle' | 'dragging'>('idle');
+  const dragStart = useRef({ x: 0, y: 0 });
   const dragDistance = useRef(0);
   const [loadedChunks, setLoadedChunks] = useState<Set<string>>(new Set());
   const [pixelData, setPixelData] = useState<Record<string, Pixel>>({});
@@ -207,28 +208,32 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ pixels, onPixelClick, onPix
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    setIsDragging(true);
-    setDragStart({ x: e.clientX, y: e.clientY });
-    dragDistance.current = 0; // Reset drag distance
+    setMouseState('dragging');
+    dragStart.current = { x: e.clientX, y: e.clientY };
+    dragDistance.current = 0;
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (isDragging) {
-      const dx = e.clientX - dragStart.x;
-      const dy = e.clientY - dragStart.y;
-      dragDistance.current += Math.abs(dx) + Math.abs(dy); // Accumulate distance
+    if (mouseState === 'dragging') {
+      const dx = e.clientX - dragStart.current.x;
+      const dy = e.clientY - dragStart.current.y;
+      dragDistance.current += Math.abs(dx) + Math.abs(dy);
+      
       setViewport(prev => ({
         ...prev,
         x: prev.x - dx / prev.scale,
         y: prev.y - dy / prev.scale,
       }));
-      setDragStart({ x: e.clientX, y: e.clientY });
-      onPixelHover(null, 0, 0);
+
+      dragStart.current = { x: e.clientX, y: e.clientY };
+      onPixelHover(null, 0, 0); // Hide tooltip while dragging
     } else {
+      // Always show hover info when not dragging
       const coords = getPixelCoordinates(e.clientX, e.clientY);
       if (coords) {
         const key = `${coords.x},${coords.y}`;
-        onPixelHover(pixelData[key] || null, e.clientX, e.clientY);
+        const pixel = pixelData[key] || null;
+        onPixelHover(pixel, e.clientX, e.clientY);
       }
     }
   };
@@ -241,10 +246,18 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ pixels, onPixelClick, onPix
         onPixelClick(coords.x, coords.y);
       }
     }
-    setIsDragging(false);
+    setMouseState('idle');
+
+    // After mouse up, immediately trigger a hover check at the current position
+    const coords = getPixelCoordinates(e.clientX, e.clientY);
+    if (coords) {
+      const key = `${coords.x},${coords.y}`;
+      onPixelHover(pixelData[key] || null, e.clientX, e.clientY);
+    }
   };
 
   const handleMouseLeave = () => {
+    setMouseState('idle'); // Reset state when mouse leaves
     onPixelHover(null, 0, 0);
   };
 
