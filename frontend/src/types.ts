@@ -14,4 +14,11 @@ export type WebSocketMessage =
   | {
       type: 'cooldownViolation';
       message: string;
+    }
+  | {
+      type: 'cooldownStatus';
+      data: {
+        canPlace: boolean;
+        remaining: number;
+      };
     };

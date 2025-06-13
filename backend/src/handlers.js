@@ -95,7 +95,6 @@ async function handleMessage(event) {
           return { statusCode: 400, body: 'Invalid payload for placePixel.' };
         }
         
-        // --- Cooldown Logic ---
         const { canPlace, remaining } = await checkUserCooldown(username);
 
         if (!canPlace) {
@@ -108,16 +107,37 @@ async function handleMessage(event) {
 
         const pixelData = await placePixel(x, y, emoji, ip, username);
 
-        // Eagerly update the S3 cache, broadcast to all clients, and set the new cooldown
         await Promise.all([
             updateChunk(x, y, pixelData),
             broadcast({ type: 'pixelPlaced', data: pixelData }),
             updateUserCooldown(username),
         ]);
         
+        const newCooldown = await checkUserCooldown(username);
+        await sendToConnection(connectionId, {
+            type: 'cooldownStatus',
+            data: { canPlace: newCooldown.canPlace, remaining: newCooldown.remaining },
+        });
+        
         console.log(`Pixel placed by ${username} at (${x}, ${y}).`);
         
         return { statusCode: 200, body: 'Pixel placed.' };
+      }
+      
+      case 'getCooldownStatus': {
+        const { username } = message.data;
+        if (!username) {
+          return { statusCode: 400, body: 'Username is required for getCooldownStatus.' };
+        }
+        
+        const { canPlace, remaining } = await checkUserCooldown(username);
+        
+        await sendToConnection(connectionId, {
+          type: 'cooldownStatus',
+          data: { canPlace, remaining },
+        });
+
+        return { statusCode: 200, body: 'Cooldown status sent.' };
       }
 
       default:

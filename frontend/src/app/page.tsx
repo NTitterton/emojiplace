@@ -50,12 +50,31 @@ export default function Home() {
   const [selectedEmoji, setSelectedEmoji] = useState('😀');
   const [tooltip, setTooltip] = useState<{ content: React.ReactNode; position: { x: number, y: number } | null } | null>(null);
   const [jumpCoords, setJumpCoords] = useState({ x: '0', y: '0' });
+  const [cooldown, setCooldown] = useState<{ canPlace: boolean; remaining: number }>({ canPlace: false, remaining: 0 });
 
+  // Load username from localStorage on initial render
+  useEffect(() => {
+    const savedUsername = localStorage.getItem('emojiPlaceUsername');
+    if (savedUsername) {
+        setUsername(savedUsername);
+        setTempUsername(savedUsername);
+    }
+  }, []);
+  
   const { lastMessage, sendJsonMessage, readyState } = useWebSocket(wsUrl, {
-    onOpen: () => console.log('WebSocket connected'),
-    onClose: () => console.log('WebSocket disconnected'),
     shouldReconnect: (closeEvent) => true,
   });
+
+  // Request cooldown status when the connection opens or the user changes
+  useEffect(() => {
+    if (readyState === ReadyState.OPEN && username) {
+        console.log('Requesting cooldown status for', username);
+        sendJsonMessage({
+            type: 'getCooldownStatus',
+            data: { username },
+        });
+    }
+  }, [readyState, username, sendJsonMessage]);
 
   useEffect(() => {
     if (lastMessage !== null) {
@@ -64,20 +83,40 @@ export default function Home() {
         case 'pixelPlaced':
           setPixels(prev => ({ ...prev, [`${message.data.x},${message.data.y}`]: message.data }));
           break;
+        case 'cooldownStatus':
+          setCooldown(message.data);
+          break;
         case 'cooldownViolation':
           setTooltip({
             content: <div className="text-red-400">{message.message}</div>,
-            // Position in center of screen for alerts
             position: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
           });
-          setTimeout(() => setTooltip(null), 2000); // Hide after 2 seconds
+          setTimeout(() => setTooltip(null), 2000);
           break;
       }
     }
   }, [lastMessage]);
 
+  // Client-side timer for cooldown countdown
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (!cooldown.canPlace && cooldown.remaining > 0) {
+      timer = setInterval(() => {
+        setCooldown(prev => {
+          const newRemaining = prev.remaining - 1;
+          if (newRemaining <= 0) {
+            return { canPlace: true, remaining: 0 };
+          }
+          return { ...prev, remaining: newRemaining };
+        });
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [cooldown]);
+
   const handleSetUsername = () => {
     setUsername(tempUsername);
+    localStorage.setItem('emojiPlaceUsername', tempUsername);
   };
 
   const handlePixelClick = useCallback((x: number, y: number) => {
@@ -143,6 +182,9 @@ export default function Home() {
       <div className="absolute top-4 left-4 bg-white/80 backdrop-blur-sm rounded-lg shadow-xl p-4 space-y-4 max-w-sm z-10">
         <h1 className="text-2xl font-bold">EmojiPlace</h1>
         <p className="text-sm text-gray-600">Connection: {connectionStatus}</p>
+        <p className="text-sm text-gray-600">
+          Cooldown: {cooldown.canPlace ? <span className="text-green-500 font-bold">Ready</span> : <span>{cooldown.remaining}s</span>}
+        </p>
         
         {/* User Info Section */}
         <div>
