@@ -82,19 +82,17 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ pixels, onPixelClick, onPix
 
       (async () => {
         try {
+          // fetch() automatically follows the redirect from our API to the CloudFront URL.
+          // The browser handles the CORS preflight and subsequent request correctly.
           const response = await fetch(`${API_BASE}/api/pixels/region/${chunkX * CHUNK_SIZE}/${chunkY * CHUNK_SIZE}`);
-          if (response.redirected) {
-              const chunkResponse = await fetch(response.url);
-              if (chunkResponse.ok) {
-                  const chunkData: Record<string, Pixel> = await chunkResponse.json();
-                  setPixelData(prev => ({ ...prev, ...chunkData }));
-              }
-          } else if (response.ok) {
+
+          // We only need to check the final response.
+          if (response.ok) {
             const chunkData: Record<string, Pixel> = await response.json();
             setPixelData(prev => ({ ...prev, ...chunkData }));
-          } else if (!response.ok) {
-              console.error(`Failed to fetch chunk ${chunkId}, status: ${response.status}`);
-              // Important: If the fetch fails (e.g. 403), remove from loaded so we can retry
+          } else {
+              // Log an error if the fetch to the final URL failed (e.g. 403, 404, 500)
+              console.error(`Failed to fetch chunk ${chunkId} data, status: ${response.status}`);
               setLoadedChunks(prev => {
                   const newSet = new Set(prev);
                   newSet.delete(chunkId);
@@ -102,6 +100,7 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ pixels, onPixelClick, onPix
               });
           }
         } catch (error) {
+          // This will catch network errors (e.g., DNS failure, or a CORS block)
           console.error(`Failed to fetch chunk ${chunkId}:`, error);
           setLoadedChunks(prev => {
               const newSet = new Set(prev);
@@ -245,6 +244,10 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ pixels, onPixelClick, onPix
     setIsDragging(false);
   };
 
+  const handleMouseLeave = () => {
+    onPixelHover(null, 0, 0);
+  };
+
   // REMOVED for disabling zoom
   // const handleWheel = (e: React.WheelEvent) => {
   //   e.preventDefault();
@@ -304,10 +307,7 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ pixels, onPixelClick, onPix
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
-      onMouseLeave={() => {
-        setIsDragging(false);
-        onPixelHover(null, 0, 0);
-      }}
+      onMouseLeave={handleMouseLeave}
       // onWheel={handleWheel} // Zoom disabled
     />
   );
