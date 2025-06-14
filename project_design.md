@@ -129,4 +129,150 @@ The `getPixelRegion` Lambda function is responsible for providing the client wit
 
 ### Real-time Communication
 
-Real-time updates are managed through API Gateway's WebSocket support. The `ConnectionsTable` in DynamoDB maintains a record of all currently active client connections. When a pixel is successfully placed, the backend Lambda function iterates through the connection IDs in this table and pushes the update to each client. 
+Real-time updates are managed through API Gateway's WebSocket support. The `ConnectionsTable` in DynamoDB maintains a record of all currently active client connections. When a pixel is successfully placed, the backend Lambda function iterates through the connection IDs in this table and pushes the update to each client.
+
+## 5. LLM Agent System
+
+To bring the canvas to life, we will introduce a system of autonomous LLM-powered agents representing different AI models (e.g., Gemini 2.5 Pro, Claude 3 Opus, etc.). These agents will collaborate to create larger structures on the canvas over time.
+
+### 5.1 Architecture & Agent Lifecycle
+
+The agent system is designed to be event-driven and cost-effective, integrating with the existing serverless backend.
+
+```mermaid
+graph TD
+    subgraph "User's Browser"
+        Frontend[("Next.js Client Application")]
+    end
+
+    subgraph "AWS Cloud"
+        subgraph "Networking & Edge"
+            APIGW_WS["API Gateway WebSocket API"]
+            APIGW_HTTP["API Gateway HTTP API"]
+            CloudFront["CloudFront CDN"]
+        end
+
+        subgraph "Compute (Lambda)"
+            Connect["handleConnect"]
+            Disconnect["handleDisconnect"]
+            MessageHandler["handleMessage"]
+            GetRegion["getPixelRegion"]
+            AgentOrchestrator["Agent Orchestrator"]
+        end
+
+        subgraph "Database (DynamoDB)"
+            ConnectionsTable[("Connections Table")]
+            CooldownTable[("Cooldown Table")]
+            PixelTable[("Pixel Table")]
+            AgentMemory[("Agent Memory Table")]
+        end
+
+        subgraph "Storage"
+            S3["S3 Bucket for Canvas Chunks"]
+        end
+
+        subgraph "Orchestration & Logging"
+            EventBridge["EventBridge Scheduler"]
+            EventLog["CloudWatch Log Stream for Agents"]
+        end
+    end
+
+    subgraph "External Services"
+        LLM_APIs["LLM APIs (Anthropic, Google)"]
+    end
+
+    %% Flow: Initial data load and WebSocket connection
+    Frontend -- "(1) GET /region" --> APIGW_HTTP
+    APIGW_HTTP -- "(2) Invokes" --> GetRegion
+    GetRegion -- "(3) Returns CloudFront URL" --> Frontend
+    Frontend -- "(4) GET chunk URL" --> CloudFront
+    CloudFront -- "(5) Origin Request" --> S3
+    
+    Frontend -- "(6) WebSocket CONNECT" --> APIGW_WS
+    APIGW_WS -- "(7) $connect route" --> Connect
+    Connect -- "(8) Writes connectionId" --> ConnectionsTable
+
+    %% Flow: User places a pixel
+    Frontend -- "(9) place_pixel message" --> APIGW_WS
+    APIGW_WS -- "(10) $default route" --> MessageHandler
+    
+    MessageHandler -- "(11a) Checks cooldown" --> CooldownTable
+    MessageHandler -- "(11b) Writes pixel data" --> PixelTable
+    MessageHandler -- "(11c) Updates chunk" --> S3
+    MessageHandler -- "(11d) Sets cooldown" --> CooldownTable
+    MessageHandler -- "(12) Gets connections" --> ConnectionsTable
+    MessageHandler -- "(13) Broadcasts 'pixel_placed'" --> APIGW_WS
+    
+    %% Disconnect
+    APIGW_WS -- "$disconnect" --> Disconnect
+    Disconnect -- "Deletes connectionId" --> ConnectionsTable
+
+    %% Flow: LLM Agent Turn
+    EventBridge -- "(A) Triggers every N minutes" --> AgentOrchestrator
+    AgentOrchestrator -- "(B) Reads state/messages" --> AgentMemory
+    AgentOrchestrator -- "(C) Reads canvas chunk" --> S3
+    AgentOrchestrator -- "(D) Generates prompt & invokes" --> LLM_APIs
+    LLM_APIs -- "(E) Returns thought/action" --> AgentOrchestrator
+    AgentOrchestrator -- "(F) Logs thought" --> EventLog
+    AgentOrchestrator -- "(G) Places pixel (invokes MessageHandler)" --> MessageHandler
+    AgentOrchestrator -- "(H) Sends messages/updates plan" --> AgentMemory
+    
+
+    %% Style
+    classDef lambda fill:#FF9900,stroke:#000,stroke-width:2px;
+    class Connect,Disconnect,MessageHandler,GetRegion,AgentOrchestrator lambda;
+    classDef db fill:#2E73B8,stroke:#000,stroke-width:2px,color:#fff;
+    class ConnectionsTable,CooldownTable,PixelTable,AgentMemory db;
+    classDef s3 fill:#D53447,stroke:#000,stroke-width:2px,color:#fff;
+    class S3 s3;
+    classDef edge fill:#7D7C7C,stroke:#000,stroke-width:2px,color:#fff;
+    class APIGW_WS,APIGW_HTTP,CloudFront edge;
+    classDef client fill:#f9f,stroke:#333,stroke-width:2px
+    class Frontend client
+    classDef orchestrator fill:#90EE90,stroke:#000,stroke-width:2px;
+    class EventBridge,EventLog orchestrator;
+    classDef external fill:#C0C0C0,stroke:#000,stroke-width:2px;
+    class LLM_APIs external;
+```
+
+The agent lifecycle is as follows:
+
+1.  **Trigger:** An `EventBridge Scheduler` rule invokes the `Agent Orchestrator` Lambda function at a configurable interval (e.g., once per minute).
+2.  **State Loading:** The orchestrator queries the `AgentMemory` DynamoDB table to get the current state for each agent. This includes their long-term plan (e.g., "build a rocket ship"), their short-term memory or scratchpad, and a queue of messages received from other agents.
+3.  **Perception:** The agent needs to "see" the canvas. The orchestrator fetches the relevant canvas chunk(s) from the S3 bucket based on the agent's area of interest.
+4.  **Thinking:** The orchestrator constructs a detailed prompt for the LLM. This prompt includes:
+    -   The agent's identity and long-term plan.
+    -   The current state of the relevant canvas area.
+    -   Messages from other agents.
+    -   A directive to output its internal monologue (`thought`), messages for other agents, and a single `place_pixel` action in a structured format (e.g., JSON).
+5.  **Action & Communication:** The orchestrator parses the LLM's response.
+    -   It logs the `thought` to a dedicated `CloudWatch Log Stream` for observability.
+    -   It stores any new messages for other agents in the `AgentMemory` table.
+    -   It invokes the existing `MessageHandler` function to execute the `place_pixel` action. This reuses the existing cooldown and broadcast logic, ensuring agents and human users are treated equally.
+    -   It updates the agent's plan and state in the `AgentMemory` table.
+
+### 5.2 Event Logging & Observability
+
+To provide a clear view into the system's behavior, we will implement structured logging for all significant events:
+
+-   **Agent Thoughts:** The internal monologue of each agent on each turn will be logged.
+-   **Agent Messages:** All inter-agent communications will be recorded.
+-   **Agent & User Actions:** Every `place_pixel` event, whether from a user or an agent, will be logged, along with who performed the action.
+
+These logs will be stored in CloudWatch Logs, allowing us to easily query and analyze the emergent collaborative behavior and debug the system. A simple frontend interface could later be built to display this event log to users.
+
+### 5.3 Cost & Tradeoffs
+
+The primary driver of cost for this system will be the calls to external LLM APIs. The serverless AWS components (Lambda, DynamoDB, EventBridge) are extremely cost-effective at low-to-medium traffic and fall well within a hobbyist budget.
+
+**Controlling LLM Costs:**
+
+-   **Frequency of Execution:** This is the most important lever. The `EventBridge` schedule is the system's throttle.
+    -   **1-minute interval:** For 3 agents, this is `3 agents * 60 minutes * 24 hours * 30 days = 129,600` invocations/month.
+    -   **15-minute interval:** This reduces the load to `3 * 4 * 24 * 30 = 8,640` invocations/month.
+-   **Model Selection:** We can be strategic about which model performs which action. For example, we could use a cheaper, faster model (like Claude 3 Sonnet or Gemini 2.5 Flash) for most turns and only use the more powerful, expensive model (like Claude 3 Opus or Gemini 2.5 Pro) for more complex planning steps, perhaps every Nth turn.
+-   **Input/Output Size:** By providing only the most relevant parts of the canvas ("chunks") and keeping agent plans concise, we can minimize the number of tokens used in each API call.
+
+**Estimated Budget (<$100/month):**
+
+-   With a 15-minute execution interval and strategic use of smaller models for routine tasks, the LLM API costs can be kept manageable. AWS Free Tiers for Lambda, DynamoDB, and EventBridge will likely cover most, if not all, of the infrastructure costs for this feature. This approach balances a lively, active canvas with predictable, low operational costs. 
