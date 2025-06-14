@@ -44,8 +44,8 @@ export default function Home() {
   const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001';
   const canvasRef = useRef<CanvasRef>(null);
   const [userId] = useState(getUserId());
-  const [username, setUsername] = useState('guest');
-  const [tempUsername, setTempUsername] = useState('guest');
+  const [username, setUsername] = useState('');
+  const [tempUsername, setTempUsername] = useState('');
   const [pixels, setPixels] = useState<Record<string, Pixel>>({});
   const [selectedEmoji, setSelectedEmoji] = useState('😀');
   const [tooltip, setTooltip] = useState<{ content: React.ReactNode; position: { x: number, y: number } | null } | null>(null);
@@ -67,11 +67,11 @@ export default function Home() {
 
   // Request cooldown status when the connection opens or the user changes
   useEffect(() => {
-    if (readyState === ReadyState.OPEN && username) {
-        console.log('Requesting cooldown status for', username);
+    if (readyState === ReadyState.OPEN) {
+        console.log('Requesting cooldown status for', username || 'guest (IP)');
         sendJsonMessage({
             type: 'getCooldownStatus',
-            data: { username },
+            data: { username: username },
         });
     }
   }, [readyState, username, sendJsonMessage]);
@@ -123,7 +123,7 @@ export default function Home() {
     if (readyState === ReadyState.OPEN) {
       sendJsonMessage({
         type: 'placePixel',
-        data: { x, y, emoji: selectedEmoji, username: username || 'guest' }
+        data: { x, y, emoji: selectedEmoji, username: username }
       });
     } else {
       console.log('WebSocket is not connected.');
@@ -188,7 +188,7 @@ export default function Home() {
         
         {/* User Info Section */}
         <div>
-            <h2 className="font-bold">Hello, {username}!</h2>
+            <h2 className="font-bold">{username ? `Hello, ${username}!` : "Set your username:"}</h2>
             <div className="flex items-center space-x-2 mt-1">
                 <input
                     type="text"
@@ -199,7 +199,7 @@ export default function Home() {
                 />
                 <button onClick={handleSetUsername} className="bg-blue-500 text-white rounded px-3 py-1 text-sm flex-shrink-0">Set</button>
             </div>
-                </div>
+        </div>
         
         {/* Jump To Section */}
         <div>

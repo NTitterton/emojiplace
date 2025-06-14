@@ -89,9 +89,14 @@ async function handleMessage(event) {
 
     switch (message.type) {
       case 'placePixel': {
-        const { x, y, emoji, username } = message.data;
+        let { x, y, emoji, username } = message.data;
 
-        if (typeof x !== 'number' || typeof y !== 'number' || !emoji || !username) {
+        // Fallback: if username is missing or is the default "guest", use the client's IP address.
+        if (!username || username === 'guest') {
+          username = ip;
+        }
+
+        if (typeof x !== 'number' || typeof y !== 'number' || !emoji) {
           return { statusCode: 400, body: 'Invalid payload for placePixel.' };
         }
         
@@ -125,11 +130,12 @@ async function handleMessage(event) {
       }
       
       case 'getCooldownStatus': {
-        const { username } = message.data;
-        if (!username) {
-          return { statusCode: 400, body: 'Username is required for getCooldownStatus.' };
+        let { username } = message.data;
+
+        if (!username || username === 'guest') {
+          username = ip;
         }
-        
+
         const { canPlace, remaining } = await checkUserCooldown(username);
         
         await sendToConnection(connectionId, {
