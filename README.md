@@ -33,7 +33,7 @@ A collaborative emoji canvas inspired by r/place, where users can place emojis o
 
 1.  Clone the repository:
     ```bash
-    git clone <your-repo-url>
+    git clone https://github.com/NTitterton/emojiplace.git
     cd emojiplace
     ```
 
