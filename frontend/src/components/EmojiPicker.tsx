@@ -90,10 +90,12 @@ export default function EmojiPicker({ onEmojiSelect, selectedEmoji }: EmojiPicke
             </div>
           </div>
           
-          {/* Emoji grid with fixed height */}
-          <div className="h-72 overflow-y-auto pr-2  
-                        scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-100 
-                        scrollbar-thumb-rounded-full scrollbar-track-rounded-full">
+          {/* Emoji grid with scrollable area */}
+          <div
+            style={{ maxHeight: '18rem', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}
+            className="pr-2 scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-100 
+                       scrollbar-thumb-rounded-full scrollbar-track-rounded-full"
+          >
             <div className="grid grid-cols-8 gap-1">
               {getFilteredEmojis().map((emoji, index) => (
               <button
