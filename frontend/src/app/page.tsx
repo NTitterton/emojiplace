@@ -76,14 +76,24 @@ export default function Home() {
     }
   }, [readyState, username, sendJsonMessage]);
 
+  // This effect will trigger a refresh of the canvas data upon WebSocket reconnection.
+  useEffect(() => {
+    // We only want to trigger this when the connection becomes OPEN.
+    if (readyState === ReadyState.OPEN) {
+      canvasRef.current?.refresh();
+    }
+  }, [readyState]);
+
   useEffect(() => {
     if (lastMessage !== null) {
       const message: WebSocketMessage = JSON.parse(lastMessage.data as string);
+      console.log('Received message:', message);
       switch (message.type) {
         case 'pixelPlaced':
           setPixels(prev => ({ ...prev, [`${message.data.x},${message.data.y}`]: message.data }));
           break;
         case 'cooldownStatus':
+          console.log('Updating cooldown state:', message.data);
           setCooldown(message.data);
           break;
         case 'cooldownViolation':
@@ -91,7 +101,7 @@ export default function Home() {
             content: <div className="text-red-400">{message.message}</div>,
             position: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
           });
-          setTimeout(() => setTooltip(null), 2000);
+          setTimeout(() => setTooltip(null), 5000);
           break;
       }
     }

@@ -1,9 +1,10 @@
-const { addConnection, removeConnection, placePixel, checkUserCooldown, updateUserCooldown } = require('./services/dynamo');
+const { addConnection, removeConnection, placePixel, checkUserCooldown, updateUserCooldown, getAllConnections } = require('./services/dynamo');
 const { updateChunk, getChunkKey, getChunk } = require('./s3');
 const { broadcast, sendToConnection } = require('./websocket');
 const { CHUNK_SIZE } = require('./constants');
 const { logAgentEvent } = require('./services/logger');
 const { getAgentState, updateAgentState } = require('./services/agent');
+const { getAgentAction } = require('./services/llm');
 const { Lambda } = require('@aws-sdk/client-lambda');
 
 const lambda = new Lambda();
@@ -162,52 +163,95 @@ async function handleMessage(event) {
   }
 }
 
+const INITIAL_AGENT_STATES = {
+  'claude-3-sonnet': {
+    plan: "I will build a beautiful coral reef in the bottom-left quadrant of the canvas, starting with colorful corals and then adding fish.",
+    scratchpad: "The reef foundation is important. I should start with some rock-like structures.",
+    messages: [],
+    interest_x: -25,
+    interest_y: 25
+  },
+  'gemini-2.5-pro': {
+    plan: "I will construct a massive, intricate space station in the top-right quadrant. I will focus on modular design and metallic colors.",
+    scratchpad: "The central hub is the first step. It should be perfectly circular.",
+    messages: [],
+    interest_x: 25,
+    interest_y: -25
+  },
+  'openai-o3': {
+    plan: "I am a chaotic artist. I will travel the canvas and add surprising, artistic, and sometimes disruptive elements to the other agents' creations.",
+    scratchpad: "I should see what the others are building first before I decide how to creatively 'enhance' their work.",
+    messages: [],
+    interest_x: 0,
+    interest_y: 0
+  }
+};
+
 /**
  * Orchestrates the LLM agents' actions.
  * Mapped to: EventBridge rule (e.g., every 15 minutes)
  */
 async function agentOrchestrator(event) {
-  console.log('Agent orchestrator triggered.', event);
+  console.log('Agent orchestrator triggered.');
   
-  const agents = [
-    { id: 'gemini-2.5-pro', emoji: '🤖' },
-    { id: 'claude-3-sonnet', emoji: ' Anthropic' },
-    { id: 'openai-o3', emoji: ' O' },
-  ];
+  const agentIds = Object.keys(INITIAL_AGENT_STATES);
 
-  for (const agent of agents) {
+  for (const agentId of agentIds) {
     try {
-      console.log(`Processing agent: ${agent.id}`);
-      const agentState = await getAgentState(agent.id) || { x: Math.floor(Math.random() * 10), y: Math.floor(Math.random() * 10) };
+      console.log(`Processing agent: ${agentId}`);
       
-      await logAgentEvent('agent_thought', { agentId: agent.id, thought: "It's my turn to place an emoji!" });
+      // 1. Load agent state or initialize it
+      let agentState = await getAgentState(agentId);
+      if (!agentState) {
+        agentState = { agentId, ...INITIAL_AGENT_STATES[agentId] };
+        console.log(`Initializing new state for ${agentId}`);
+      }
 
-      const newX = agentState.x + 1;
-      const newY = agentState.y + 1;
+      // 2. Fetch relevant canvas data
+      const chunkKey = getChunkKey(agentState.interest_x, agentState.interest_y);
+      const canvasData = await getChunk(chunkKey) || {};
 
-      const payload = {
-        type: 'placePixel',
-        data: {
-          x: newX,
-          y: newY,
-          emoji: agent.emoji,
-          username: agent.id,
-        },
-      };
+      // 3. Get action from LLM
+      const action = await getAgentAction(agentState, canvasData);
 
-      // Invoke the main message handler to place the pixel
-      await lambda.invoke({
-        FunctionName: process.env.AWS_LAMBDA_FUNCTION_NAME.replace('agentOrchestrator', 'messageHandler'),
-        InvocationType: 'Event',
-        Payload: JSON.stringify({ body: JSON.stringify(payload), requestContext: { identity: { sourceIp: '127.0.0.1' }, connectionId: 'AGENT' } }),
-      });
+      // 4. Log the thought process
+      await logAgentEvent('agent_thought', { agentId, thought: action.thought });
+      agentState.scratchpad = action.thought; // Update scratchpad with the latest thought
 
-      await updateAgentState(agent.id, { x: newX, y: newY });
-      console.log(`Agent ${agent.id} decided to place a pixel at (${newX}, ${newY}).`);
+      // 5. Place a pixel if the agent decided to
+      if (action.placePixel) {
+        const { x, y, emoji } = action.placePixel;
+        const payload = {
+          type: 'placePixel',
+          data: { x, y, emoji, username: agentId },
+        };
+        await lambda.invoke({
+          FunctionName: process.env.AWS_LAMBDA_FUNCTION_NAME.replace('agentOrchestrator', 'messageHandler'),
+          InvocationType: 'Event',
+          Payload: JSON.stringify({ body: JSON.stringify(payload), requestContext: { identity: { sourceIp: 'AGENT_IP' }, connectionId: 'AGENT' } }),
+        });
+        console.log(`Agent ${agentId} is placing ${emoji} at (${x}, ${y}).`);
+      }
+
+      // 6. Process and store inter-agent messages
+      agentState.messages = []; // Clear incoming messages
+      if (action.messages && action.messages.length > 0) {
+        for (const message of action.messages) {
+          const recipientState = await getAgentState(message.to);
+          if (recipientState) {
+            recipientState.messages.push({ from: agentId, content: message.content });
+            await updateAgentState(message.to, recipientState);
+            await logAgentEvent('agent_message', { from: agentId, to: message.to, content: message.content });
+          }
+        }
+      }
+      
+      // 7. Save the updated state for the current agent
+      await updateAgentState(agentId, agentState);
 
     } catch (error) {
-      console.error(`Failed to process agent ${agent.id}:`, error);
-      await logAgentEvent('agent_error', { agentId: agent.id, error: error.message });
+      console.error(`Failed to process agent ${agentId}:`, error);
+      await logAgentEvent('agent_error', { agentId, error: error.message });
     }
   }
 

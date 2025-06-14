@@ -20,11 +20,11 @@ async function sendToConnection(connectionId, data) {
     });
     await apiGatewayClient.send(command);
   } catch (error) {
-    if (error.statusCode === 410) {
+    if (error.$metadata?.httpStatusCode === 410) {
       console.log(`Found stale connection, deleting ${connectionId}`);
       await removeConnection(connectionId);
     } else {
-      console.error("Failed to post to connection", connectionId, error);
+      console.error(`Failed to post to connection ${connectionId}:`, error);
     }
   }
 }
@@ -37,7 +37,7 @@ async function broadcast(data) {
   const connections = await getAllConnections();
   const message = JSON.stringify(data);
 
-  const postCalls = connections.map(async ({ connectionId }) => {
+  const postPromises = connections.map(async ({ connectionId }) => {
     try {
       const command = new PostToConnectionCommand({
         ConnectionId: connectionId,
@@ -45,17 +45,17 @@ async function broadcast(data) {
       });
       await apiGatewayClient.send(command);
     } catch (error) {
-      // This error can happen if a connection is stale.
-      if (error.statusCode === 410) {
-        console.log(`Found stale connection, deleting ${connectionId}`);
+      if (error.$metadata?.httpStatusCode === 410) {
+        console.log(`Found stale connection during broadcast, deleting ${connectionId}`);
         await removeConnection(connectionId);
       } else {
-        console.error("Failed to post to connection", connectionId, error);
+        // We log the error but don't re-throw, so one failed connection doesn't stop the whole broadcast.
+        console.error(`Failed to post to connection ${connectionId}:`, error);
       }
     }
   });
 
-  await Promise.all(postCalls);
+  await Promise.all(postPromises);
 }
 
 module.exports = {

@@ -1,5 +1,8 @@
 service: emojiplace-backend
 
+plugins:
+  - serverless-iam-roles-per-function
+
 package:
   individually: true
   excludeDevDependencies: true
@@ -51,7 +54,12 @@ functions:
       - Effect: "Allow"
         Action:
           - "s3:GetObject"
+          - "s3:GetObjectVersion"
         Resource: "arn:aws:s3:::${self:provider.environment.S3_CHUNK_BUCKET}/*"
+      - Effect: "Allow"
+        Action:
+          - "s3:ListBucket"
+        Resource: "arn:aws:s3:::${self:provider.environment.S3_CHUNK_BUCKET}"
 
   connectionHandler:
     handler: src/handlers.handleConnect
@@ -91,12 +99,16 @@ functions:
           - "dynamodb:Query"
           - "dynamodb:GetItem"
           - "dynamodb:PutItem"
+          - "dynamodb:Scan"
+          - "dynamodb:DeleteItem"
         Resource:
           - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_COOLDOWN_TABLE}"
           - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_PIXEL_TABLE}"
+          - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_CONNECTIONS_TABLE}"
       - Effect: "Allow"
         Action:
           - "s3:PutObject"
+          - "s3:GetObject"
         Resource: "arn:aws:s3:::${self:provider.environment.S3_CHUNK_BUCKET}/*"
       - Effect: "Allow"
         Action:
@@ -114,6 +126,10 @@ functions:
           - "dynamodb:GetItem"
           - "dynamodb:PutItem"
         Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_AGENT_MEMORY_TABLE}"
+      - Effect: "Allow"
+        Action:
+          - "s3:GetObject"
+        Resource: "arn:aws:s3:::${self:provider.environment.S3_CHUNK_BUCKET}/*"
       - Effect: "Allow"
         Action:
           - "logs:CreateLogStream"

@@ -43,9 +43,10 @@ interface CanvasProps {
 const MIN_PIXEL_SIZE = 5;
 const MAX_PIXEL_SIZE = 50;
 
-// The ref will expose a jumpTo function
+// The ref will expose a jumpTo function and a refresh function
 export interface CanvasRef {
   jumpTo(x: number, y: number): void;
+  refresh(): void;
 }
 
 const Canvas = forwardRef<CanvasRef, CanvasProps>(({ pixels, onPixelClick, onPixelHover }, ref) => {
@@ -298,8 +299,14 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ pixels, onPixelClick, onPix
         x: x - (canvas.width / prev.scale / 2),
         y: y - (canvas.height / prev.scale / 2),
       }));
+    },
+    refresh: () => {
+      // Clear loaded chunks and re-fetch visible ones
+      console.log('Refreshing visible chunks on reconnect.');
+      setLoadedChunks(new Set());
+      fetchVisibleChunks();
     }
-  }));
+  }), [fetchVisibleChunks]);
 
   // This effect runs once to set up the responsive canvas size
   useEffect(() => {

@@ -4,15 +4,19 @@
   "description": "Backend for emojiPlace",
   "main": "src/index.js",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.54.0",
     "@aws-sdk/client-apigatewaymanagementapi": "^3.596.0",
     "@aws-sdk/util-dynamodb": "^3.596.0",
+    "@google/generative-ai": "^0.24.1",
     "ioredis": "^5.4.1",
+    "openai": "^5.3.0",
     "react-use-websocket": "^4.13.0",
     "uuid": "^9.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.0",
     "serverless": "^3.0.0",
-    "serverless-dotenv-plugin": "^6.0.0"
+    "serverless-dotenv-plugin": "^6.0.0",
+    "serverless-iam-roles-per-function": "^3.2.0"
   }
 }
