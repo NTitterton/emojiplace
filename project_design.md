@@ -35,32 +35,31 @@ graph TD
         end
     end
 
-    %% Frontend to AWS
-    Frontend -- "1. GET /api/pixels/region/{x}/{y}" --> APIGW_HTTP
-    Frontend -- "3. WebSocket CONNECT" --> APIGW_WS
-    Frontend -- "5. place_pixel message" --> APIGW_WS
-    Frontend -- "10. GET chunk URL" --> CloudFront
-
-    %% API Gateway to Lambda
-    APIGW_HTTP -- "2. Invokes" --> GetRegion
-    APIGW_WS -- "4. $connect route" --> Connect
-    APIGW_WS -- "$disconnect route" --> Disconnect
-    APIGW_WS -- "6. $default route" --> MessageHandler
-
-    %% Lambda to Services
-    GetRegion -- "Returns CloudFront URL" --> Frontend
-    Connect -- "Writes connectionId" --> ConnectionsTable
-    Disconnect -- "Deletes connectionId" --> ConnectionsTable
+    %% Flow: Initial data load and WebSocket connection
+    Frontend -- "(1) GET /region" --> APIGW_HTTP
+    APIGW_HTTP -- "(2) Invokes" --> GetRegion
+    GetRegion -- "(3) Returns CloudFront URL" --> Frontend
+    Frontend -- "(4) GET chunk URL" --> CloudFront
+    CloudFront -- "(5) Origin Request" --> S3
     
-    MessageHandler -- "7a. Checks cooldown" --> CooldownTable
-    MessageHandler -- "7b. Writes pixel data" --> PixelTable
-    MessageHandler -- "7c. Updates chunk file" --> S3
-    MessageHandler -- "7d. Sets new cooldown" --> CooldownTable
-    MessageHandler -- "8. Gets all connections" --> ConnectionsTable
-    MessageHandler -- "9. Broadcasts 'pixel_placed'" --> APIGW_WS
+    Frontend -- "(6) WebSocket CONNECT" --> APIGW_WS
+    APIGW_WS -- "(7) $connect route" --> Connect
+    Connect -- "(8) Writes connectionId" --> ConnectionsTable
 
-    %% CDN to Storage
-    CloudFront -- "Origin Request (OAI)" --> S3
+    %% Flow: User places a pixel
+    Frontend -- "(9) place_pixel message" --> APIGW_WS
+    APIGW_WS -- "(10) $default route" --> MessageHandler
+    
+    MessageHandler -- "(11a) Checks cooldown" --> CooldownTable
+    MessageHandler -- "(11b) Writes pixel data" --> PixelTable
+    MessageHandler -- "(11c) Updates chunk" --> S3
+    MessageHandler -- "(11d) Sets cooldown" --> CooldownTable
+    MessageHandler -- "(12) Gets connections" --> ConnectionsTable
+    MessageHandler -- "(13) Broadcasts 'pixel_placed'" --> APIGW_WS
+    
+    %% Disconnect
+    APIGW_WS -- "$disconnect" --> Disconnect
+    Disconnect -- "Deletes connectionId" --> ConnectionsTable
 
     %% Style
     classDef lambda fill:#FF9900,stroke:#000,stroke-width:2px;
