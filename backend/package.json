@@ -12,6 +12,7 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.0",
-    "serverless": "^3.0.0"
+    "serverless": "^3.0.0",
+    "serverless-dotenv-plugin": "^6.0.0"
   }
 }
