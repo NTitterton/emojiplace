@@ -63,6 +63,7 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ pixels, onPixelClick, onPix
   const dragDistance = useRef(0);
   const [loadedChunks, setLoadedChunks] = useState<Set<string>>(new Set());
   const [pixelData, setPixelData] = useState<Record<string, Pixel>>({});
+  const [hoveredCell, setHoveredCell] = useState<{ x: number; y: number } | null>(null);
 
   // Merge broadcasted pixels with fetched chunk pixels
   useEffect(() => {
@@ -191,7 +192,19 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ pixels, onPixelClick, onPix
         ctx.fillText(pixel.emoji, canvasX + scale / 2, canvasY + scale / 2);
       }
     }
-  }, [pixelData, viewport, drawGrid]);
+
+    // Draw highlight on hovered cell
+    if (hoveredCell) {
+      const canvasX = (hoveredCell.x - viewX) * scale;
+      const canvasY = (hoveredCell.y - viewY) * scale;
+
+      if (canvasX + scale > 0 && canvasX < canvas.width && canvasY + scale > 0 && canvasY < canvas.height) {
+        ctx.strokeStyle = 'rgba(255, 255, 0, 0.75)'; // Yellow highlight
+        ctx.lineWidth = 2;
+        ctx.strokeRect(canvasX, canvasY, scale, scale);
+      }
+    }
+  }, [pixelData, viewport, drawGrid, hoveredCell]);
 
   useEffect(() => {
     drawCanvas();
@@ -234,6 +247,9 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ pixels, onPixelClick, onPix
         const key = `${coords.x},${coords.y}`;
         const pixel = pixelData[key] || null;
         onPixelHover(pixel, e.clientX, e.clientY);
+        setHoveredCell(coords);
+      } else {
+        setHoveredCell(null);
       }
     }
   };
@@ -253,12 +269,14 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ pixels, onPixelClick, onPix
     if (coords) {
       const key = `${coords.x},${coords.y}`;
       onPixelHover(pixelData[key] || null, e.clientX, e.clientY);
+      setHoveredCell(coords);
     }
   };
 
   const handleMouseLeave = () => {
-    setMouseState('idle'); // Reset state when mouse leaves
     onPixelHover(null, 0, 0);
+    setMouseState('idle');
+    setHoveredCell(null);
   };
 
   // REMOVED for disabling zoom
