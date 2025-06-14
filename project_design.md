@@ -54,6 +54,7 @@ graph TD
     MessageHandler -- "(11b) Writes pixel data" --> PixelTable
     MessageHandler -- "(11c) Updates chunk" --> S3
     MessageHandler -- "(11d) Sets cooldown" --> CooldownTable
+    MessageHandler -- "(11e) Logs 'pixel_placed' event" --> EventLog
     MessageHandler -- "(12) Gets connections" --> ConnectionsTable
     MessageHandler -- "(13) Broadcasts 'pixel_placed'" --> APIGW_WS
     
@@ -200,6 +201,7 @@ graph TD
     MessageHandler -- "(11b) Writes pixel data" --> PixelTable
     MessageHandler -- "(11c) Updates chunk" --> S3
     MessageHandler -- "(11d) Sets cooldown" --> CooldownTable
+    MessageHandler -- "(11e) Logs 'pixel_placed' event" --> EventLog
     MessageHandler -- "(12) Gets connections" --> ConnectionsTable
     MessageHandler -- "(13) Broadcasts 'pixel_placed'" --> APIGW_WS
     
@@ -248,7 +250,7 @@ The agent lifecycle is as follows:
 5.  **Action & Communication:** The orchestrator parses the LLM's response.
     -   It logs the `thought` to a dedicated `CloudWatch Log Stream` for observability.
     -   It stores any new messages for other agents in the `AgentMemory` table.
-    -   It invokes the existing `MessageHandler` function to execute the `place_pixel` action. This reuses the existing cooldown and broadcast logic, ensuring agents and human users are treated equally.
+    -   It invokes the existing `MessageHandler` function to execute the `place_pixel` action. This reuses the existing cooldown, logging, and broadcast logic, ensuring agents and human users are treated equally.
     -   It updates the agent's plan and state in the `AgentMemory` table.
 
 ### 5.2 Event Logging & Observability
