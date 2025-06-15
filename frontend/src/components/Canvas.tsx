@@ -280,12 +280,51 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ pixels, onPixelClick, onPix
     setHoveredCell(null);
   };
 
-  // REMOVED for disabling zoom
-  // const handleWheel = (e: React.WheelEvent) => {
-  //   e.preventDefault();
-  //   const newScale = Math.min(MAX_PIXEL_SIZE, Math.max(MIN_PIXEL_SIZE, viewport.scale - e.deltaY * 0.01));
-  //   setViewport(prev => ({ ...prev, scale: newScale }));
-  // };
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    e.preventDefault();
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      setMouseState('dragging');
+      dragStart.current = { x: touch.clientX, y: touch.clientY };
+      dragDistance.current = 0;
+    }
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    e.preventDefault();
+    if (mouseState === 'dragging' && e.touches.length === 1) {
+      const touch = e.touches[0];
+      const dx = touch.clientX - dragStart.current.x;
+      const dy = touch.clientY - dragStart.current.y;
+      dragDistance.current += Math.abs(dx) + Math.abs(dy);
+      
+      setViewport(prev => ({
+        ...prev,
+        x: prev.x - dx / prev.scale,
+        y: prev.y - dy / prev.scale,
+      }));
+
+      dragStart.current = { x: touch.clientX, y: touch.clientY };
+    }
+  }, [mouseState]);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    e.preventDefault();
+    setMouseState('idle');
+    if (dragDistance.current < 5) {
+      const touch = e.changedTouches[0];
+      const coords = getPixelCoordinates(touch.clientX, touch.clientY);
+      if (coords) {
+        onPixelClick(coords.x, coords.y);
+      }
+    }
+  }, [onPixelClick]);
+
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const newScale = Math.min(MAX_PIXEL_SIZE, Math.max(MIN_PIXEL_SIZE, viewport.scale - e.deltaY * 0.01));
+    setViewport(prev => ({ ...prev, scale: newScale }));
+  };
   
   // Expose the jumpTo function via the ref
   useImperativeHandle(ref, () => ({
@@ -339,15 +378,20 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ pixels, onPixelClick, onPix
   }, []);
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="block w-full h-full cursor-pointer select-none" // Use block and w-full/h-full
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseLeave}
-      // onWheel={handleWheel} // Zoom disabled
-    />
+    <div className="w-full h-full" style={{ touchAction: 'none' }}>
+        <canvas
+          ref={canvasRef}
+          className="block w-full h-full cursor-pointer select-none" // Use block and w-full/h-full
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseLeave}
+          onWheel={handleWheel}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        />
+    </div>
   );
 });
 
