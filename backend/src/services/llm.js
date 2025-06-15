@@ -44,6 +44,7 @@ Rules:
 - Your 'thought' is crucial for logging and understanding your behavior.
 - You can send zero or more messages.
 - If you have nothing to do, you can choose to do nothing by providing null for "placePixel".
+- You must place a pixel.
 `;
 
 function getFullPrompt(agentState, canvasData) {
