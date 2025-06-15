@@ -51,6 +51,7 @@ export default function Home() {
   const [tooltip, setTooltip] = useState<{ content: React.ReactNode; position: { x: number, y: number } | null } | null>(null);
   const [jumpCoords, setJumpCoords] = useState({ x: '0', y: '0' });
   const [cooldown, setCooldown] = useState<{ canPlace: boolean; remaining: number }>({ canPlace: false, remaining: 0 });
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
 
   // Load username from localStorage on initial render
   useEffect(() => {
@@ -189,55 +190,73 @@ export default function Home() {
       </div>
 
       {/* Floating UI Panel */}
-      <div className="absolute top-4 left-4 bg-white/80 backdrop-blur-sm rounded-lg shadow-xl p-2 sm:p-3 space-y-1 z-10">
-        <h1 className="text-lg sm:text-xl font-bold">EmojiPlace</h1>
-        <p className="text-xs sm:text-sm text-gray-600">Connection: {connectionStatus}</p>
-        <p className="text-xs sm:text-sm text-gray-600">
-          Cooldown: {cooldown.canPlace ? <span className="text-green-500 font-bold">Ready</span> : <span>{cooldown.remaining}s</span>}
-        </p>
-        
-        {/* User Info Section */}
-        <div>
-            <h2 className="font-bold text-sm sm:text-base mb-1">{username ? `Hello, ${username}!` : "Set your username:"}</h2>
-            <div className="flex items-center space-x-2">
-                <input
-                    type="text"
-                    value={tempUsername}
-                    onChange={(e) => setTempUsername(e.target.value)}
-                    className="border rounded px-2 py-0.5 text-xs sm:text-sm w-full"
-                    placeholder="Enter username"
-                />
-                <button onClick={handleSetUsername} className="bg-blue-500 text-white rounded px-3 py-0.5 text-xs sm:text-sm flex-shrink-0">Set</button>
+      <div className="absolute top-4 left-4 z-10">
+        {!isPanelOpen && (
+            <button
+                onClick={() => setIsPanelOpen(true)}
+                className="bg-white/80 backdrop-blur-sm rounded-lg shadow-xl p-2"
+            >
+                Menu
+            </button>
+        )}
+
+        {isPanelOpen && (
+            <div className="bg-white/80 backdrop-blur-sm rounded-lg shadow-xl p-2 space-y-1 w-[280px]">
+                <div className="flex justify-between items-center mb-2">
+                    <h1 className="text-lg font-bold">EmojiPlace</h1>
+                    <button onClick={() => setIsPanelOpen(false)} className="text-sm font-bold p-1">
+                        X
+                    </button>
+                </div>
+                <p className="text-xs text-gray-600">Connection: {connectionStatus}</p>
+                <p className="text-xs text-gray-600 pb-2">
+                  Cooldown: {cooldown.canPlace ? <span className="text-green-500 font-bold">Ready</span> : <span>{cooldown.remaining}s</span>}
+                </p>
+                
+                {/* User Info Section */}
+                <div>
+                    <h2 className="font-bold text-sm mb-1">{username ? `Hello, ${username}!` : "Set your username:"}</h2>
+                    <div className="flex items-center space-x-2">
+                        <input
+                            type="text"
+                            value={tempUsername}
+                            onChange={(e) => setTempUsername(e.target.value)}
+                            className="border rounded px-2 py-0.5 text-xs w-full"
+                            placeholder="Enter username"
+                        />
+                        <button onClick={handleSetUsername} className="bg-blue-500 text-white rounded px-3 py-0.5 text-xs flex-shrink-0">Set</button>
+                    </div>
+                </div>
+                
+                {/* Jump To Section */}
+                <div>
+                    <h2 className="font-bold text-sm mb-1">Jump to Coordinate</h2>
+                    <div className="flex items-center space-x-2">
+                          <input
+                            type="number"
+                            value={jumpCoords.x}
+                            onChange={(e) => setJumpCoords(c => ({...c, x: e.target.value}))}
+                            className="border rounded px-2 py-0.5 text-xs w-full"
+                            placeholder="X"
+                          />
+                          <input
+                            type="number"
+                            value={jumpCoords.y}
+                            onChange={(e) => setJumpCoords(c => ({...c, y: e.target.value}))}
+                            className="border rounded px-2 py-0.5 text-xs w-full"
+                            placeholder="Y"
+                        />
+                        <button onClick={handleJumpTo} className="bg-green-500 text-white rounded px-3 py-0.5 text-xs flex-shrink-0">Jump</button>
+                      </div>
+                    </div>
+                    
+                {/* Emoji Picker */}
+                <div>
+                    <h2 className="font-bold text-sm mb-1">Select Emoji</h2>
+                    <EmojiPicker onEmojiSelect={setSelectedEmoji} selectedEmoji={selectedEmoji} />
+                </div>
             </div>
-        </div>
-        
-        {/* Jump To Section */}
-        <div>
-            <h2 className="font-bold text-sm sm:text-base mb-1">Jump to Coordinate</h2>
-            <div className="flex items-center space-x-2">
-                  <input
-                    type="number"
-                    value={jumpCoords.x}
-                    onChange={(e) => setJumpCoords(c => ({...c, x: e.target.value}))}
-                    className="border rounded px-2 py-0.5 text-xs sm:text-sm w-full"
-                    placeholder="X"
-                  />
-                  <input
-                    type="number"
-                    value={jumpCoords.y}
-                    onChange={(e) => setJumpCoords(c => ({...c, y: e.target.value}))}
-                    className="border rounded px-2 py-0.5 text-xs sm:text-sm w-full"
-                    placeholder="Y"
-                />
-                <button onClick={handleJumpTo} className="bg-green-500 text-white rounded px-3 py-0.5 text-xs sm:text-sm flex-shrink-0">Jump</button>
-              </div>
-            </div>
-            
-            {/* Emoji Picker */}
-        <div>
-            <h2 className="font-bold text-sm sm:text-base mb-1">Select Emoji</h2>
-            <EmojiPicker onEmojiSelect={setSelectedEmoji} selectedEmoji={selectedEmoji} />
-        </div>
+        )}
       </div>
     </main>
   );
