@@ -189,8 +189,8 @@ export default function Home() {
       </div>
 
       {/* Floating UI Panel */}
-      <div className="absolute top-4 left-4 bg-white/80 backdrop-blur-sm rounded-lg shadow-xl p-2 sm:p-4 space-y-2 sm:space-y-4 max-w-xs sm:max-w-sm z-10">
-        <h1 className="text-xl sm:text-2xl font-bold">EmojiPlace</h1>
+      <div className="absolute top-4 left-4 bg-white/80 backdrop-blur-sm rounded-lg shadow-xl p-2 sm:p-4 space-y-1 sm:space-y-2 max-w-xs sm:max-w-sm z-10">
+        <h1 className="text-lg sm:text-xl font-bold">EmojiPlace</h1>
         <p className="text-xs sm:text-sm text-gray-600">Connection: {connectionStatus}</p>
         <p className="text-xs sm:text-sm text-gray-600">
           Cooldown: {cooldown.canPlace ? <span className="text-green-500 font-bold">Ready</span> : <span>{cooldown.remaining}s</span>}
@@ -198,44 +198,44 @@ export default function Home() {
         
         {/* User Info Section */}
         <div>
-            <h2 className="font-bold text-base sm:text-lg">{username ? `Hello, ${username}!` : "Set your username:"}</h2>
+            <h2 className="font-bold text-sm sm:text-base">{username ? `Hello, ${username}!` : "Set your username:"}</h2>
             <div className="flex items-center space-x-2 mt-1">
                 <input
                     type="text"
                     value={tempUsername}
                     onChange={(e) => setTempUsername(e.target.value)}
-                    className="border rounded px-2 py-1 text-xs sm:text-sm w-full"
+                    className="border rounded px-2 py-0.5 text-xs sm:text-sm w-full"
                     placeholder="Enter username"
                 />
-                <button onClick={handleSetUsername} className="bg-blue-500 text-white rounded px-3 py-1 text-xs sm:text-sm flex-shrink-0">Set</button>
+                <button onClick={handleSetUsername} className="bg-blue-500 text-white rounded px-3 py-0.5 text-xs sm:text-sm flex-shrink-0">Set</button>
             </div>
         </div>
         
         {/* Jump To Section */}
         <div>
-            <h2 className="font-bold text-base sm:text-lg">Jump to Coordinate</h2>
+            <h2 className="font-bold text-sm sm:text-base">Jump to Coordinate</h2>
             <div className="flex items-center space-x-2 mt-1">
                   <input
                     type="number"
                     value={jumpCoords.x}
                     onChange={(e) => setJumpCoords(c => ({...c, x: e.target.value}))}
-                    className="border rounded px-2 py-1 text-xs sm:text-sm w-full"
+                    className="border rounded px-2 py-0.5 text-xs sm:text-sm w-full"
                     placeholder="X"
                   />
                   <input
                     type="number"
                     value={jumpCoords.y}
                     onChange={(e) => setJumpCoords(c => ({...c, y: e.target.value}))}
-                    className="border rounded px-2 py-1 text-xs sm:text-sm w-full"
+                    className="border rounded px-2 py-0.5 text-xs sm:text-sm w-full"
                     placeholder="Y"
                 />
-                <button onClick={handleJumpTo} className="bg-green-500 text-white rounded px-3 py-1 text-xs sm:text-sm flex-shrink-0">Jump</button>
+                <button onClick={handleJumpTo} className="bg-green-500 text-white rounded px-3 py-0.5 text-xs sm:text-sm flex-shrink-0">Jump</button>
               </div>
             </div>
             
             {/* Emoji Picker */}
         <div>
-            <h2 className="font-bold text-base sm:text-lg">Select Emoji</h2>
+            <h2 className="font-bold text-sm sm:text-base">Select Emoji</h2>
             <EmojiPicker onEmojiSelect={setSelectedEmoji} selectedEmoji={selectedEmoji} />
         </div>
       </div>
