@@ -7,7 +7,7 @@ const anthropic = new Anthropic({
 });
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-const gemini = genAI.getGenerativeModel({ model: 'gemini-1.5-pro-latest' });
+const gemini = genAI.getGenerativeModel({ model: 'gemini-2.5-pro-preview-06-05' });
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -70,16 +70,16 @@ async function getAgentAction(agentState, canvasData) {
 
   try {
     switch (agentState.agentId) {
-      case 'claude-3-sonnet': {
+      case 'claude-4-sonnet': {
         const msg = await anthropic.messages.create({
-          model: 'claude-3-5-sonnet-20240620',
+          model: 'claude-sonnet-4-20250514',
           max_tokens: 1024,
           messages: [{ role: 'user', content: prompt }],
         });
         responseText = msg.content[0].text;
         break;
       }
-      case 'gemini-1.5-pro': {
+      case 'gemini-2.5-pro': {
         const result = await gemini.generateContent(prompt);
         const response = result.response;
         

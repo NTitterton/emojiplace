@@ -164,14 +164,14 @@ async function handleMessage(event) {
 }
 
 const INITIAL_AGENT_STATES = {
-  'claude-3-sonnet': {
+  'claude-4-sonnet': {
     plan: "I will build a beautiful coral reef in the bottom-left quadrant of the canvas, starting with colorful corals and then adding fish.",
     scratchpad: "The reef foundation is important. I should start with some rock-like structures.",
     messages: [],
     interest_x: -25,
     interest_y: 25
   },
-  'gemini-1.5-pro': {
+  'gemini-2.5-pro': {
     plan: "I will construct a massive, intricate space station in the top-right quadrant. I will focus on modular design and metallic colors.",
     scratchpad: "The central hub is the first step. It should be perfectly circular.",
     messages: [],
