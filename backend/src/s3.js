@@ -49,20 +49,32 @@ async function getChunk(key) {
 async function updateChunk(x, y, pixelData) {
   const bucketName = process.env.S3_CHUNK_BUCKET;
   const key = getChunkKey(x, y);
-  let chunk = (await getChunk(key)) || {};
+  console.log(`Updating chunk for pixel at (${x}, ${y}) with key: ${key}`);
 
-  // Update the pixel within the chunk
-  const pixelKey = `${x},${y}`;
-  chunk[pixelKey] = pixelData;
+  try {
+    let chunk = await getChunk(key);
+    if (!chunk) {
+      console.log(`Chunk with key ${key} not found. Creating new chunk.`);
+      chunk = {};
+    }
 
-  const command = new PutObjectCommand({
-    Bucket: bucketName,
-    Key: key,
-    Body: JSON.stringify(chunk),
-    ContentType: 'application/json',
-  });
+    // Update the pixel within the chunk
+    const pixelKey = `${x},${y}`;
+    chunk[pixelKey] = pixelData;
 
-  await s3Client.send(command);
+    const command = new PutObjectCommand({
+      Bucket: bucketName,
+      Key: key,
+      Body: JSON.stringify(chunk),
+      ContentType: 'application/json',
+    });
+
+    await s3Client.send(command);
+    console.log(`Successfully updated and saved chunk with key: ${key}`);
+  } catch (error) {
+    console.error(`Error updating chunk with key ${key}:`, error);
+    throw error; // Re-throw the error to be handled by the calling function
+  }
 }
 
 module.exports = {

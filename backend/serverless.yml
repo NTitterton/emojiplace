@@ -112,6 +112,10 @@ functions:
         Resource: "arn:aws:s3:::${self:provider.environment.S3_CHUNK_BUCKET}/*"
       - Effect: "Allow"
         Action:
+          - "s3:ListBucket"
+        Resource: "arn:aws:s3:::${self:provider.environment.S3_CHUNK_BUCKET}"
+      - Effect: "Allow"
+        Action:
           - "logs:CreateLogStream"
           - "logs:PutLogEvents"
         Resource: "arn:aws:logs:${self:provider.region}:*:log-group:${self:provider.environment.AGENT_EVENT_LOG_GROUP}:*"
@@ -132,6 +136,7 @@ functions:
       - Effect: "Allow"
         Action:
           - "s3:GetObject"
+          - "s3:PutObject"
         Resource: "arn:aws:s3:::${self:provider.environment.S3_CHUNK_BUCKET}/*"
       - Effect: "Allow"
         Action:
