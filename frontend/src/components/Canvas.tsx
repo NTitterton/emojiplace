@@ -62,6 +62,7 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ pixels, onPixelClick, onPix
   const [mouseState, setMouseState] = useState<'idle' | 'dragging'>('idle');
   const dragStart = useRef({ x: 0, y: 0 });
   const dragDistance = useRef(0);
+  const touchStartRect = useRef<DOMRect | null>(null);
   const [loadedChunks, setLoadedChunks] = useState<Set<string>>(new Set());
   const [pixelData, setPixelData] = useState<Record<string, Pixel>>({});
   const [hoveredCell, setHoveredCell] = useState<{ x: number; y: number } | null>(null);
@@ -212,10 +213,10 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ pixels, onPixelClick, onPix
   }, [drawCanvas]);
 
   // Mouse and interaction handlers
-  const getPixelCoordinates = (clientX: number, clientY: number) => {
+  const getPixelCoordinates = (clientX: number, clientY: number, customRect?: DOMRect | null) => {
     const canvas = canvasRef.current;
     if (!canvas) return null;
-    const rect = canvas.getBoundingClientRect();
+    const rect = customRect || canvas.getBoundingClientRect();
     const x = Math.floor((clientX - rect.left) / viewport.scale + viewport.x);
     const y = Math.floor((clientY - rect.top) / viewport.scale + viewport.y);
     return { x, y };
@@ -284,6 +285,7 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ pixels, onPixelClick, onPix
     e.preventDefault();
     if (e.touches.length === 1) {
       const touch = e.touches[0];
+      touchStartRect.current = canvasRef.current?.getBoundingClientRect() ?? null;
       setMouseState('dragging');
       dragStart.current = { x: touch.clientX, y: touch.clientY };
       dragDistance.current = 0;
@@ -313,7 +315,7 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ pixels, onPixelClick, onPix
     setMouseState('idle');
     if (dragDistance.current < 5) {
       const touch = e.changedTouches[0];
-      const coords = getPixelCoordinates(touch.clientX, touch.clientY);
+      const coords = getPixelCoordinates(touch.clientX, touch.clientY, touchStartRect.current);
       if (coords) {
         onPixelClick(coords.x, coords.y);
       }
