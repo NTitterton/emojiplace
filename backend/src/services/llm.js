@@ -33,6 +33,11 @@ Your output must be a valid JSON object with the following structure:
   }
 }
 
+Coordinate System:
+- The origin (0,0) is at the center of the canvas.
+- The x-axis increases to the right (positive x is right).
+- The y-axis increases downwards (positive y is down).
+
 Rules:
 - You can only place one pixel per turn.
 - The 'emoji' must be a single, standard Unicode emoji.
@@ -67,16 +72,21 @@ async function getAgentAction(agentState, canvasData) {
     switch (agentState.agentId) {
       case 'claude-3-sonnet': {
         const msg = await anthropic.messages.create({
-          model: 'claude-3-sonnet-20240229',
+          model: 'claude-3-5-sonnet-20240620',
           max_tokens: 1024,
           messages: [{ role: 'user', content: prompt }],
         });
         responseText = msg.content[0].text;
         break;
       }
-      case 'gemini-2.5-pro': {
+      case 'gemini-1.5-pro': {
         const result = await gemini.generateContent(prompt);
-        const response = await result.response;
+        const response = result.response;
+        
+        if (response.promptFeedback && response.promptFeedback.blockReason) {
+          throw new Error(`Gemini response blocked due to ${response.promptFeedback.blockReason}.`);
+        }
+
         responseText = response.text();
         break;
       }

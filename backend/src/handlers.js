@@ -171,7 +171,7 @@ const INITIAL_AGENT_STATES = {
     interest_x: -25,
     interest_y: 25
   },
-  'gemini-2.5-pro': {
+  'gemini-1.5-pro': {
     plan: "I will construct a massive, intricate space station in the top-right quadrant. I will focus on modular design and metallic colors.",
     scratchpad: "The central hub is the first step. It should be perfectly circular.",
     messages: [],
@@ -231,6 +231,10 @@ async function agentOrchestrator(event) {
           Payload: JSON.stringify({ body: JSON.stringify(payload), requestContext: { identity: { sourceIp: 'AGENT_IP' }, connectionId: 'AGENT' } }),
         });
         console.log(`Agent ${agentId} is placing ${emoji} at (${x}, ${y}).`);
+        
+        // Update the agent's area of interest to where it just placed a pixel
+        agentState.interest_x = x;
+        agentState.interest_y = y;
       }
 
       // 6. Process and store inter-agent messages

@@ -115,11 +115,14 @@ functions:
           - "logs:CreateLogStream"
           - "logs:PutLogEvents"
         Resource: "arn:aws:logs:${self:provider.region}:*:log-group:${self:provider.environment.AGENT_EVENT_LOG_GROUP}:*"
+      - Effect: "Allow"
+        Action: "logs:CreateLogGroup"
+        Resource: "arn:aws:logs:${self:provider.region}:*:*"
 
   agentOrchestrator:
     handler: src/handlers.agentOrchestrator
     events:
-      - schedule: rate(15 minutes)
+      - schedule: rate(5 minutes)
     iamRoleStatements:
       - Effect: "Allow"
         Action:
@@ -132,9 +135,16 @@ functions:
         Resource: "arn:aws:s3:::${self:provider.environment.S3_CHUNK_BUCKET}/*"
       - Effect: "Allow"
         Action:
+          - "s3:ListBucket"
+        Resource: "arn:aws:s3:::${self:provider.environment.S3_CHUNK_BUCKET}"
+      - Effect: "Allow"
+        Action:
           - "logs:CreateLogStream"
           - "logs:PutLogEvents"
         Resource: "arn:aws:logs:${self:provider.region}:*:log-group:${self:provider.environment.AGENT_EVENT_LOG_GROUP}:*"
+      - Effect: "Allow"
+        Action: "logs:CreateLogGroup"
+        Resource: "arn:aws:logs:${self:provider.region}:*:*"
       - Effect: "Allow"
         Action:
           - "lambda:InvokeFunction"
@@ -188,11 +198,6 @@ resources:
           - AttributeName: agentId
             KeyType: HASH
         BillingMode: PAY_PER_REQUEST
-    AgentEventLog:
-      Type: AWS::Logs::LogGroup
-      Properties:
-        LogGroupName: ${self:provider.environment.AGENT_EVENT_LOG_GROUP}
-        RetentionInDays: 30 # Keep logs for 30 days
     ChunksBucket:
       Type: AWS::S3::Bucket
       Properties:
