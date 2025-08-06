@@ -212,7 +212,7 @@ export default function Home() {
         </div>
 
         {/* Floating UI Panel */}
-        <div className="absolute top-4 left-4 z-10">
+        <div className="absolute top-4 left-4 z-40">
           {!isPanelOpen && (
               <button
                   onClick={() => setIsPanelOpen(true)}
@@ -279,8 +279,7 @@ export default function Home() {
                   </div>
               </div>
           )}
-        </div>
-      </main>
+        </div>      </main>
       
       {/* Messages Display - rendered outside main to avoid positioning conflicts */}
       <MessagesDisplay 

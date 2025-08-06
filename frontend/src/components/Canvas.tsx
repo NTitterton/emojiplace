@@ -315,13 +315,14 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ pixels, onPixelClick, onPix
     setMouseState('idle');
     if (dragDistance.current < 5) {
       const touch = e.changedTouches[0];
-      const coords = getPixelCoordinates(touch.clientX, touch.clientY, touchStartRect.current);
+      // Get the LATEST canvas position on touch end
+      const currentRect = canvasRef.current?.getBoundingClientRect() ?? null;
+      const coords = getPixelCoordinates(touch.clientX, touch.clientY, currentRect);
       if (coords) {
         onPixelClick(coords.x, coords.y);
       }
     }
   }, [onPixelClick]);
-
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
     const newScale = Math.min(MAX_PIXEL_SIZE, Math.max(MIN_PIXEL_SIZE, viewport.scale - e.deltaY * 0.01));
