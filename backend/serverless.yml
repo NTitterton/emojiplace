@@ -27,6 +27,7 @@ provider:
     DYNAMODB_CONNECTIONS_TABLE: ConnectionsTable-${self:provider.stage}
     DYNAMODB_COOLDOWN_TABLE: CooldownTable-${self:provider.stage}
     DYNAMODB_AGENT_MEMORY_TABLE: AgentMemoryTable-${self:provider.stage}
+    DYNAMODB_AGENT_MESSAGES_TABLE: AgentMessagesTable-${self:provider.stage}
     S3_CHUNK_BUCKET: emojiplace-chunks-${self:provider.stage}
     AGENT_EVENT_LOG_GROUP: /aws/lambda/AgentEvents-${self:provider.stage}
     CLOUDFRONT_URL: !GetAtt ChunksCloudFront.DomainName
@@ -60,6 +61,21 @@ functions:
         Action:
           - "s3:ListBucket"
         Resource: "arn:aws:s3:::${self:provider.environment.S3_CHUNK_BUCKET}"
+
+  getRecentMessages:
+    handler: src/handlers.getRecentMessagesHttp
+    events:
+      - httpApi:
+          path: /api/messages/recent
+          method: get
+    iamRoleStatements:
+      - Effect: "Allow"
+        Action:
+          - "dynamodb:Query"
+          - "dynamodb:Scan"
+        Resource: 
+          - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_AGENT_MESSAGES_TABLE}"
+          - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_AGENT_MESSAGES_TABLE}/index/*"
 
   connectionHandler:
     handler: src/handlers.handleConnect
@@ -105,6 +121,8 @@ functions:
           - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_COOLDOWN_TABLE}"
           - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_PIXEL_TABLE}"
           - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_CONNECTIONS_TABLE}"
+          - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_AGENT_MESSAGES_TABLE}"
+          - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_AGENT_MESSAGES_TABLE}/index/*"
       - Effect: "Allow"
         Action:
           - "s3:PutObject"
@@ -132,7 +150,10 @@ functions:
         Action:
           - "dynamodb:GetItem"
           - "dynamodb:PutItem"
-        Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_AGENT_MEMORY_TABLE}"
+        Resource: 
+          - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_AGENT_MEMORY_TABLE}"
+          - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_AGENT_MESSAGES_TABLE}"
+          - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_AGENT_MESSAGES_TABLE}/index/*"
       - Effect: "Allow"
         Action:
           - "s3:GetObject"
@@ -202,6 +223,26 @@ resources:
         KeySchema:
           - AttributeName: agentId
             KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+    AgentMessagesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.DYNAMODB_AGENT_MESSAGES_TABLE}
+        AttributeDefinitions:
+          - AttributeName: messageId
+            AttributeType: S
+          - AttributeName: timestamp
+            AttributeType: N
+        KeySchema:
+          - AttributeName: messageId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: TimestampIndex
+            KeySchema:
+              - AttributeName: timestamp
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
         BillingMode: PAY_PER_REQUEST
     ChunksBucket:
       Type: AWS::S3::Bucket

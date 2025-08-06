@@ -7,6 +7,7 @@ const docClient = DynamoDBDocumentClient.from(client);
 const pixelTableName = process.env.DYNAMODB_PIXEL_TABLE;
 const connectionsTableName = process.env.DYNAMODB_CONNECTIONS_TABLE;
 const cooldownTableName = process.env.DYNAMODB_COOLDOWN_TABLE;
+const agentMessagesTableName = process.env.DYNAMODB_AGENT_MESSAGES_TABLE;
 
 const { COOLDOWN_SECONDS } = require('../constants');
 
@@ -149,6 +150,93 @@ async function updateUserCooldown(username) {
   return docClient.send(command);
 }
 
+// AGENT MESSAGES-RELATED FUNCTIONS
+
+/**
+ * Stores an agent message in DynamoDB for display in the frontend
+ * @param {string} from - The agent ID that sent the message
+ * @param {string} to - The agent ID that received the message  
+ * @param {string} content - The message content
+ */
+async function storeAgentMessage(from, to, content) {
+  const messageId = `${Date.now()}_${from}_${to}`;
+  const timestamp = Date.now();
+  
+  const messageData = {
+    messageId,
+    timestamp,
+    from,
+    to,
+    content,
+    createdAt: new Date().toISOString(),
+  };
+  
+  const command = new PutCommand({
+    TableName: agentMessagesTableName,
+    Item: messageData,
+  });
+  
+  await docClient.send(command);
+  return messageData;
+}
+
+/**
+ * Gets the most recent agent messages for display
+ * @param {number} limit - Maximum number of messages to retrieve (default: 10)
+ * @returns {Promise<Array>} Array of recent messages
+ */
+async function getRecentAgentMessages(limit = 10) {
+  // Query using the GSI to get messages ordered by timestamp
+  const command = new ScanCommand({
+    TableName: agentMessagesTableName,
+    Limit: limit,
+  });
+  
+  const { Items } = await docClient.send(command);
+  
+  // Sort by timestamp descending and return the most recent
+  const sortedMessages = (Items || []).sort((a, b) => b.timestamp - a.timestamp);
+  return sortedMessages.slice(0, limit);
+}
+
+/**
+ * Cleans up old messages to keep the table size manageable
+ * Keeps only the last 50 messages
+ */
+async function cleanupOldMessages() {
+  const allMessages = await getAllAgentMessages();
+  
+  if (allMessages.length <= 50) {
+    return; // No cleanup needed
+  }
+  
+  // Sort by timestamp and keep only the 50 most recent
+  const sortedMessages = allMessages.sort((a, b) => b.timestamp - a.timestamp);
+  const messagesToDelete = sortedMessages.slice(50);
+  
+  // Delete old messages in batches
+  for (const message of messagesToDelete) {
+    const deleteCommand = new DeleteCommand({
+      TableName: agentMessagesTableName,
+      Key: { messageId: message.messageId },
+    });
+    
+    await docClient.send(deleteCommand);
+  }
+}
+
+async function getAllAgentMessages() {
+  const command = new ScanCommand({ 
+    TableName: agentMessagesTableName,
+    ProjectionExpression: "messageId, #ts",
+    ExpressionAttributeNames: {
+      "#ts": "timestamp"
+    }
+  });
+  const { Items } = await docClient.send(command);
+  return Items || [];
+}
+
 module.exports = { 
   getPixelKey,
   getPixel,
@@ -160,4 +248,7 @@ module.exports = {
   getAllConnections,
   checkUserCooldown,
   updateUserCooldown,
+  storeAgentMessage,
+  getRecentAgentMessages,
+  cleanupOldMessages,
 }; 

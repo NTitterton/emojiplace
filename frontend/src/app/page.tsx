@@ -3,9 +3,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import useWebSocket, { ReadyState } from 'react-use-websocket';
-import { Pixel, WebSocketMessage } from '../types';
+import { Pixel, WebSocketMessage, AgentMessage } from '../types';
 import Canvas, { CanvasRef } from '../components/Canvas';
 import EmojiPicker from '../components/EmojiPicker';
+import MessagesDisplay from '../components/MessagesDisplay';
 import { v4 as uuidv4 } from 'uuid';
 
 // Tooltip component is now defined outside of the Home component.
@@ -52,6 +53,8 @@ export default function Home() {
   const [jumpCoords, setJumpCoords] = useState({ x: '0', y: '0' });
   const [cooldown, setCooldown] = useState<{ canPlace: boolean; remaining: number }>({ canPlace: false, remaining: 0 });
   const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [agentMessages, setAgentMessages] = useState<AgentMessage[]>([]);
+  const [isMessagesCollapsed, setIsMessagesCollapsed] = useState(false);
 
   // Load username from localStorage on initial render
   useEffect(() => {
@@ -66,13 +69,19 @@ export default function Home() {
     shouldReconnect: (closeEvent) => true,
   });
 
-  // Request cooldown status when the connection opens or the user changes
+  // Request cooldown status and recent messages when the connection opens or the user changes
   useEffect(() => {
     if (readyState === ReadyState.OPEN) {
         console.log('Requesting cooldown status for', username || 'guest (IP)');
         sendJsonMessage({
             type: 'getCooldownStatus',
             data: { username: username },
+        });
+        
+        // Request recent agent messages
+        sendJsonMessage({
+            type: 'getRecentMessages',
+            data: {},
         });
     }
   }, [readyState, username, sendJsonMessage]);
@@ -103,6 +112,18 @@ export default function Home() {
             position: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
           });
           setTimeout(() => setTooltip(null), 5000);
+          break;
+        case 'agentMessage':
+          console.log('Received agent message:', message.data);
+          setAgentMessages(prev => {
+            // Add new message and keep only the most recent 20
+            const updated = [message.data, ...prev];
+            return updated.slice(0, 20);
+          });
+          break;
+        case 'recentMessages':
+          console.log('Received recent messages:', message.data);
+          setAgentMessages(message.data || []);
           break;
       }
     }
@@ -258,6 +279,13 @@ export default function Home() {
             </div>
         )}
       </div>
+
+      {/* Messages Display */}
+      <MessagesDisplay 
+        messages={agentMessages}
+        isCollapsed={isMessagesCollapsed}
+        onToggle={() => setIsMessagesCollapsed(!isMessagesCollapsed)}
+      />
     </main>
   );
 } 

@@ -1,4 +1,4 @@
-const { addConnection, removeConnection, placePixel, checkUserCooldown, updateUserCooldown, getAllConnections } = require('./services/dynamo');
+const { addConnection, removeConnection, placePixel, checkUserCooldown, updateUserCooldown, getAllConnections, storeAgentMessage, cleanupOldMessages, getRecentAgentMessages } = require('./services/dynamo');
 const { updateChunk, getChunkKey, getChunk } = require('./s3');
 const { broadcast, sendToConnection } = require('./websocket');
 const { CHUNK_SIZE } = require('./constants');
@@ -153,6 +153,16 @@ async function handleMessage(event) {
         return { statusCode: 200, body: 'Cooldown status sent.' };
       }
 
+      case 'getRecentMessages': {
+        const recentMessages = await getRecentAgentMessages(10);
+        await sendToConnection(connectionId, {
+          type: 'recentMessages',
+          data: recentMessages,
+        });
+
+        return { statusCode: 200, body: 'Recent messages sent.' };
+      }
+
       default:
         console.log(`Unknown message type: ${message.type} from ${connectionId}`);
         return { statusCode: 400, body: 'Unknown message type.' };
@@ -246,6 +256,15 @@ async function agentOrchestrator(event) {
             recipientState.messages.push({ from: agentId, content: message.content });
             await updateAgentState(message.to, recipientState);
             await logAgentEvent('agent_message', { from: agentId, to: message.to, content: message.content });
+            
+            // Store message in DynamoDB for frontend display
+            const storedMessage = await storeAgentMessage(agentId, message.to, message.content);
+            
+            // Broadcast the message to all connected clients
+            await broadcast({
+              type: 'agentMessage',
+              data: storedMessage
+            });
           }
         }
       }
@@ -259,7 +278,34 @@ async function agentOrchestrator(event) {
     }
   }
 
+  // Cleanup old messages periodically (every 10th run, approximately)
+  if (Math.random() < 0.1) {
+    try {
+      await cleanupOldMessages();
+    } catch (error) {
+      console.error('Failed to cleanup old messages:', error);
+    }
+  }
+
   return { statusCode: 200, body: 'Agent orchestration complete.' };
+}
+
+/**
+ * HTTP endpoint to get recent agent messages
+ * Mapped to: GET /api/messages/recent
+ */
+async function getRecentMessagesHttp(event) {
+  try {
+    const recentMessages = await getRecentAgentMessages(20);
+    
+    return createApiResponse(200, {
+      messages: recentMessages,
+      count: recentMessages.length
+    });
+  } catch (error) {
+    console.error('Error fetching recent messages:', error);
+    return createApiResponse(500, { error: 'Failed to fetch messages' });
+  }
 }
 
 module.exports = {
@@ -268,4 +314,5 @@ module.exports = {
   handleMessage,
   getPixelRegion,
   agentOrchestrator,
+  getRecentMessagesHttp,
 }; 

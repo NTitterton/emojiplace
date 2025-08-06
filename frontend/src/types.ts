@@ -6,6 +6,15 @@ export interface Pixel {
   lastModified: string;
 }
 
+export interface AgentMessage {
+  messageId: string;
+  timestamp: number;
+  from: string;
+  to: string;
+  content: string;
+  createdAt: string;
+}
+
 export type WebSocketMessage = 
   | {
       type: 'pixelPlaced';
@@ -21,4 +30,12 @@ export type WebSocketMessage =
         canPlace: boolean;
         remaining: number;
       };
+    }
+  | {
+      type: 'agentMessage';
+      data: AgentMessage;
+    }
+  | {
+      type: 'recentMessages';
+      data: AgentMessage[];
     };
