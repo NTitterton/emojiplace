@@ -44,7 +44,7 @@ export default function MessagesDisplay({ messages, isCollapsed, onToggle }: Mes
   const recentMessages = sortedMessages.slice(0, 5);
 
   return (
-    <div className="fixed bottom-4 right-4 z-30 w-80 max-w-[calc(100vw-2rem)]">
+    <div className="fixed top-0 left-0 w-screen h-screen bg-red-500/20 z-[9999]">
       {/* Header */}
       <div 
         onClick={onToggle}
